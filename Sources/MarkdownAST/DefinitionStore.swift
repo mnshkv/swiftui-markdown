@@ -1,4 +1,4 @@
-import Foundation
+// Pure Swift, no Foundation — label normalization uses only stdlib String APIs.
 
 /// A link reference definition collected during the block scan pass.
 public struct LinkDef: Equatable, Sendable {
