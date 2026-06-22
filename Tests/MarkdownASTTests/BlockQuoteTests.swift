@@ -66,10 +66,13 @@ struct BlockQuoteTests {
         #expect(out == [.blockQuote(blocks: [.paragraph(raw: "q")])])
     }
 
-    @Test("4 leading spaces ⇒ not a quote (falls through to paragraph)")
+    @Test("4 leading spaces ⇒ not a quote (it is indented code, T17)")
     func fourSpaceIndentNotQuote() {
+        // 4 leading spaces: not a blockquote marker. T17: ≥4-space lines are
+        // indented code (CommonMark §4.4), so "    > q" becomes a code block
+        // with content "> q" (4 leading spaces stripped).
         let out = BlockParser(defs: DefinitionStore()).parse(["    > q"], depth: 0)
-        #expect(out == [.paragraph(raw: "> q")])
+        #expect(out == [.codeBlock(language: nil, code: "> q")])
     }
 
     @Test("`>hello` (no space) strips only the `>`")

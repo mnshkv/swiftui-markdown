@@ -37,14 +37,13 @@ struct HeadingTests {
         #expect(out == [.paragraph(raw: "####### nope")])
     }
 
-    @Test("four leading spaces is not a heading (falls through to paragraph)")
+    @Test("four leading spaces is not a heading (it is indented code, T17)")
     func fourLeadingSpacesNotHeading() {
         // 4 leading spaces: stripUpTo3Spaces keeps them ⇒ not an ATX heading.
-        // At this wave indented code is unimplemented, so the line falls through
-        // to paragraph accumulation. The paragraph raw is the per-line trimmed
-        // line ("    # H" trims to "# H").
+        // T17: ≥4-space lines are indented code (CommonMark §4.4), so "    # H"
+        // becomes a code block with content "# H" (4 leading spaces stripped).
         let out = BlockParser(defs: DefinitionStore()).parse(["    # H"], depth: 0)
-        #expect(out == [.paragraph(raw: "# H")])
+        #expect(out == [.codeBlock(language: nil, code: "# H")])
     }
 
     @Test("two leading spaces is still a heading")

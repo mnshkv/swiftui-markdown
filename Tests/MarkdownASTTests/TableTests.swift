@@ -174,13 +174,16 @@ struct TableTests {
         ])
     }
 
-    @Test("4-space indent is NOT a table (indented-code/paragraph territory)")
+    @Test("4-space indent is NOT a table (it is indented code, T17)")
     func fourSpaceIndentNotTable() {
+        // 4 leading spaces on the header ⇒ indented-code territory, not a table.
+        // T17: ≥4-space lines are indented code (CommonMark §4.4); each line has
+        // 4 leading spaces stripped, so the pipe rows become code content.
         let out = BlockParser(defs: DefinitionStore()).parse(
             ["    | a |", "    | - |", "    | 1 |"],
             depth: 0
         )
-        #expect(out == [.paragraph(raw: "| a |\n| - |\n| 1 |")])
+        #expect(out == [.codeBlock(language: nil, code: "| a |\n| - |\n| 1 |")])
     }
 
     @Test("header/delimiter cell-count mismatch falls through to a paragraph")

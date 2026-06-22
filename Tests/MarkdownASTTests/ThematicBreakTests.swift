@@ -45,13 +45,14 @@ struct ThematicBreakTests {
         #expect(out == [.paragraph(raw: "--")])
     }
 
-    @Test("four leading spaces is not a thematic break (falls through to paragraph)")
+    @Test("four leading spaces is not a thematic break (it is indented code, T17)")
     func fourLeadingSpacesNotHr() {
         // 4 leading spaces: stripUpTo3Spaces keeps them ⇒ `stripped.first == " "`
-        // ⇒ the 4-space gate falls through to paragraph accumulation. The
-        // paragraph raw is the per-line trimmed line ("    ---" trims to "---").
+        // ⇒ the 4-space gate rejects it as a thematic break. T17: ≥4-space lines
+        // are indented code (CommonMark §4.4), so "    ---" becomes a code block
+        // with content "---" (4 leading spaces stripped).
         let out = BlockParser(defs: DefinitionStore()).parse(["    ---"], depth: 0)
-        #expect(out == [.paragraph(raw: "---")])
+        #expect(out == [.codeBlock(language: nil, code: "---")])
         #expect(out != [.thematicBreak])
     }
 

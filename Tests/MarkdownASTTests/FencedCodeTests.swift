@@ -69,14 +69,14 @@ struct FencedCodeTests {
         #expect(out == [.paragraph(raw: "para"), .codeBlock(language: nil, code: "code")])
     }
 
-    @Test("four leading spaces is NOT a fence (falls through to paragraph)")
+    @Test("four leading spaces is NOT a fence (it is indented code, T17)")
     func fourLeadingSpacesNotFence() {
         // 4 leading spaces ⇒ not a fence opener (indented-code territory, T17).
-        // At this wave indented code isn't implemented, so each line falls through
-        // to paragraph accumulation. T7 trims each line: "    ```" → "```",
-        // "    code" → "code", "    ```" → "```". Joined into one paragraph.
+        // T17: ≥4-space lines are indented code (CommonMark §4.4); each line has
+        // 4 leading spaces stripped, so the fence-looking lines become literal
+        // code content "```\ncode\n```".
         let out = BlockParser(defs: DefinitionStore()).parse(["    ```", "    code", "    ```"], depth: 0)
-        #expect(out == [.paragraph(raw: "```\ncode\n```")])
+        #expect(out == [.codeBlock(language: nil, code: "```\ncode\n```")])
     }
 
     @Test("blank line inside a fenced code block is preserved as empty content")

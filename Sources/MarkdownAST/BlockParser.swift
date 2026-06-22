@@ -49,7 +49,55 @@ struct BlockParser {
                 continue
             }
 
-            if isBlank(line) {
+            // Indented code block (CommonMark §4.4). Placed BEFORE the
+            // thematic/ATX/fenced-code branches and guarded by
+            // `pending.isEmpty`: indented code CANNOT interrupt a paragraph
+            // (§4.4), so `text\n    more` keeps `    more` as a lazy paragraph
+            // continuation. The `hasPrefix("    ")` predicate matches ONLY
+            // ≥4-space-indented lines; the thematic/ATX/fence constructs
+            // require ≤3 leading spaces (they use `stripUpTo3Spaces` and need
+            // a non-space first char after stripping). So placing this branch
+            // first makes `    ---` / `    # H` / `    ``` ` correctly code,
+            // while `---` / `   ---` (0–3 spaces) skip it and reach their
+            // own branches — robustly, without depending on the other
+            // branches' internal ≥4-space rejection.
+            if pending.isEmpty, isIndentedCode(line) {
+                var content: [String] = [String(line.dropFirst(4))]
+                i += 1
+                while i < lines.count {
+                    let cl = lines[i]
+                    if isIndentedCode(cl) {
+                        content.append(String(cl.dropFirst(4)))
+                        i += 1
+                    } else if isBlank(cl) {
+                        // Peek past consecutive blanks to the next non-blank.
+                        var j = i + 1
+                        while j < lines.count, isBlank(lines[j]) { j += 1 }
+                        if j < lines.count, isIndentedCode(lines[j]) {
+                            // Blank continues the code block (internal blank).
+                            // Consume just THIS blank as an empty content line;
+                            // the loop re-peeks the next blank individually,
+                            // preserving multiple internal blanks.
+                            content.append("")
+                            i += 1
+                        } else {
+                            // Next non-blank is not indented, or EOF → the
+                            // blank is TRAILING. Stop without consuming it;
+                            // leave `i` for the outer loop (decrement so the
+                            // outer `i += 1` re-lands on the blank, matching
+                            // the blockquote/footnote idiom).
+                            i -= 1
+                            break
+                        }
+                    } else {
+                        // Non-blank, <4 leading spaces → code block ends.
+                        // Leave this line for the outer loop.
+                        i -= 1
+                        break
+                    }
+                }
+                blocks.append(.codeBlock(language: nil, code: content.joined(separator: "\n")))
+            } else if isBlank(line) {
                 flush()
             } else if isThematicBreakLine(line) {
                 // A thematic break interrupts a paragraph (CommonMark §4.1).
@@ -754,5 +802,20 @@ struct BlockParser {
             if ch == " " { count += 1 } else { break }
         }
         return count >= 4
+    }
+
+    /// True iff `line` begins an indented code block content line (CommonMark
+    /// §4.4): ≥4 leading spaces AND the line is not ONLY spaces after the first
+    /// 4. A line of all spaces (≥4) is a BLANK line, not indented code.
+    ///
+    /// The `hasPrefix("    ")` check operates on the RAW line. Tabs are
+    /// expanded to spaces upstream (Task 2), so a tab-led line becomes spaces
+    /// — no special tab handling is needed here.
+    ///
+    /// Note the operand order fixes the v1 ternary-precedence bug F13: the
+    /// negated `allSatisfy` is the right-hand operand of `&&`, so a `&&`-chain
+    /// can never accidentally bind the wrong way.
+    private func isIndentedCode(_ line: String) -> Bool {
+        line.hasPrefix("    ") && !line.dropFirst(4).allSatisfy { $0 == " " }
     }
 }
