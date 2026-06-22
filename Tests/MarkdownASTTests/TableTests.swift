@@ -49,6 +49,15 @@ struct TableTests {
         ])
     }
 
+    @Test("a pipe-less line is not a table even with a delimiter-shaped next line")
+    func pipelessHeaderIsNotTable() {
+        // "-:" is a valid single-cell delimiter (right align) but is NOT a setext
+        // underline (it contains ':'). Neither line contains a '|', so GFM
+        // requires this to stay a paragraph, not become a 1-column table.
+        let out = BlockParser(defs: DefinitionStore()).parse(["Word", "-:"], depth: 0)
+        #expect(out == [.paragraph(raw: "Word\n-:")])
+    }
+
     @Test("tables cannot interrupt a paragraph (F7)")
     func tableRequiresBlankLineBefore() {
         let out = BlockParser(defs: DefinitionStore()).parse(

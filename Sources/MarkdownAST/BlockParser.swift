@@ -207,7 +207,12 @@ struct BlockParser {
                 let delimiterLine = stripUpTo3Spaces(Substring(lines[i + 1]))
                 // ≥4 leading spaces on the header ⇒ indented-code/paragraph
                 // territory, not a table.
+                //
+                // A GFM table must contain at least one `|`: a single-column
+                // delimiter like `-:`/`:--` is a valid alignment shape but a
+                // pipe-less line followed by it is ordinary prose, not a table.
                 guard headerLine.first != " ",
+                      headerLine.contains("|") || delimiterLine.contains("|"),
                       let alignments = delimiterAlignments(String(delimiterLine))
                 else {
                     pending.append(trimWhitespace(line))
@@ -467,18 +472,26 @@ struct BlockParser {
         return (level: hashes, raw: String(text))
     }
 
-    /// True iff `line` is empty or contains only whitespace.
-    private func isBlank(_ line: String) -> Bool {
-        // `allSatisfy` on an empty String returns true — correct for blank input.
-        line.allSatisfy { $0.isWhitespace }
+    /// CommonMark "spaces and tabs": only ASCII space (U+0020) and tab (U+0009).
+    /// Unicode whitespace such as NBSP (U+00A0) is ordinary content, so we must
+    /// NOT use `Character.isWhitespace` (which is true for NBSP, en/em spaces,
+    /// etc.) when deciding blank lines or stripping indentation.
+    private func isSpaceOrTab(_ c: Character) -> Bool {
+        c == " " || c == "\t"
     }
 
-    /// Trim leading and trailing whitespace (spaces, tabs, etc.) from `line`
-    /// without Foundation.
+    /// True iff `line` is empty or contains only ASCII spaces/tabs.
+    private func isBlank(_ line: String) -> Bool {
+        // `allSatisfy` on an empty String returns true — correct for blank input.
+        line.allSatisfy { isSpaceOrTab($0) }
+    }
+
+    /// Trim leading and trailing ASCII spaces/tabs from `line` (no Foundation).
+    /// Unicode whitespace is preserved as content (see `isSpaceOrTab`).
     private func trimWhitespace(_ line: String) -> String {
         var s = Substring(line)
-        while let first = s.first, first.isWhitespace { s = s.dropFirst() }
-        while let last = s.last, last.isWhitespace { s = s.dropLast() }
+        while let first = s.first, isSpaceOrTab(first) { s = s.dropFirst() }
+        while let last = s.last, isSpaceOrTab(last) { s = s.dropLast() }
         return String(s)
     }
 

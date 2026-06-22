@@ -33,6 +33,15 @@ struct ParagraphTests {
         #expect(out == [.paragraph(raw: "x"), .paragraph(raw: "y")])
     }
 
+    @Test("a non-breaking space is content, not a blank-line separator")
+    func nonBreakingSpaceIsNotBlank() {
+        // CommonMark: a blank line contains only ASCII space (U+0020) or tab.
+        // A line of only NBSP (U+00A0) is ordinary text and must NOT split the
+        // paragraph, nor be trimmed away.
+        let out = BlockParser(defs: DefinitionStore()).parse(["a", "\u{00A0}", "b"], depth: 0)
+        #expect(out == [.paragraph(raw: "a\n\u{00A0}\nb")])
+    }
+
     @Test("empty input produces no blocks")
     func emptyInput() {
         let out = BlockParser(defs: DefinitionStore()).parse([], depth: 0)
