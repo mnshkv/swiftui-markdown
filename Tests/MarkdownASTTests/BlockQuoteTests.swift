@@ -33,13 +33,17 @@ struct BlockQuoteTests {
         #expect(out == [.blockQuote(blocks: [.paragraph(raw: "para\nlazy")])])
     }
 
-    @Test("list marker after quote is a sibling paragraph (K3 guard; becomes list with T20)")
+    @Test("list marker after quote is a sibling list, not lazily joined into the quote")
     func listSiblingNotInQuote() {
         let out = BlockParser(defs: DefinitionStore()).parse(["> para", "- item"], depth: 0)
-        // At this wave lists are not yet parsed (T18/T20), so the sibling is a
-        // paragraph. The key assertion: `- item` is NOT lazily joined into the
-        // quote's paragraph. Once T20 lands this becomes `.list(...)`.
-        #expect(out == [.blockQuote(blocks: [.paragraph(raw: "para")]), .paragraph(raw: "- item")])
+        // The key assertion: `- item` is NOT lazily joined into the quote's
+        // paragraph — it starts a sibling list (T20).
+        #expect(out == [
+            .blockQuote(blocks: [.paragraph(raw: "para")]),
+            .list(RawList(kind: .bullet, isTight: true, items: [
+                RawListItem(blocks: [.paragraph(raw: "item")], task: nil),
+            ])),
+        ])
     }
 
     @Test("a blank line without a marker ends the quote")

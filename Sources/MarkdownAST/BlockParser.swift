@@ -186,7 +186,10 @@ struct BlockParser {
                 // lines; the outer `i += 1` re-lands on the terminator (or EOF).
                 defs.addFootnote(id: fn.id, bodyLines: fn.bodyLines)
                 i += fn.consumed - 1
-            } else if pending.isEmpty, i + 1 < lines.count, setextUnderlineLevel(lines[i + 1]) == nil {
+            } else if pending.isEmpty, i + 1 < lines.count, setextUnderlineLevel(lines[i + 1]) == nil,
+                      listMarker(Substring(line)) == nil {
+                // (A line that is a valid list marker is a list item, not a
+                // table header — let it fall through to the list branch below.)
                 // GFM table (§4.6). Tables cannot interrupt a paragraph (F7):
                 // only start one when the pending paragraph is empty. The
                 // header is `lines[i]`; the delimiter is `lines[i+1]`;
@@ -347,6 +350,16 @@ struct BlockParser {
             // branch, `- - -`/`* * *`/`---` would wrongly become lists and the
             // Task 19 regression tests in `ThematicBreakTests.swift` would
             // fail. Keep the list branch BELOW thematic (i.e. at this point).
+            else if let firstMarker = listMarker(Substring(line)),
+                    pending.isEmpty || canInterruptParagraph(Substring(line)) {
+                // List (CommonMark §5.2). A list interrupts a pending paragraph
+                // only when `canInterruptParagraph` allows it (a bullet, or a
+                // `1.`-start ordered list, with a non-empty first item).
+                flush()
+                let (listBlock, next) = parseList(lines, from: i, firstMarker: firstMarker)
+                blocks.append(listBlock)
+                i = next - 1 // outer `i += 1` re-lands on the first unconsumed line
+            }
             else {
                 pending.append(trimWhitespace(line))
             }
@@ -355,6 +368,27 @@ struct BlockParser {
         flush()
 
         return blocks
+    }
+
+    /// Parses a flat (single-level) list starting at `arr[start]`, collecting
+    /// consecutive same-kind item markers. Returns the list and the next index.
+    private func parseList(_ arr: [String], from start: Int, firstMarker: ListMarker) -> (RawBlock, Int) {
+        let kind = firstMarker.kind
+        let bullet = firstMarker.bullet
+        let delimiter = firstMarker.orderedDelimiter
+        var items: [RawListItem] = []
+        var i = start
+        while i < arr.count {
+            // Same-kind continuation: same bullet char, or same ordered
+            // delimiter. A change in bullet/delimiter starts a separate list.
+            guard let lm = listMarker(Substring(arr[i])),
+                  lm.bullet == bullet, lm.orderedDelimiter == delimiter
+            else { break }
+            let content = String(arr[i].dropFirst(lm.contentStart))
+            items.append(RawListItem(blocks: [.paragraph(raw: content)], task: nil))
+            i += 1
+        }
+        return (.list(RawList(kind: kind, isTight: true, items: items)), i)
     }
 
     /// Returns the setext-heading level (1 for `=`, 2 for `-`) if `line` is a

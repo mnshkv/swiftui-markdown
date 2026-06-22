@@ -60,17 +60,16 @@ struct ThematicBreakTests {
         #expect(out == [.thematicBreak])
     }
 
-    @Test("`- a` is currently a paragraph (CURRENT behavior — flips in T20)")
-    func dashACurrentlyParagraph() {
-        // Task 19 PREEMPTIVE-GUARD sentinel: there is NO list dispatch branch
-        // yet (Task 18 only added the `listMarker(_:)` recognizer; the dispatch
-        // branch is Task 20). So `- a` falls through to paragraph-accumulate.
-        // Task 20 will add the list branch and this line will become a list —
-        // at that point, UPDATE this test to assert the list shape. It exists
-        // here ONLY to document the current behavior and to make the
-        // pre-list-branch state explicit so T20's wiring is observable.
+    @Test("`- a` is a single-item bullet list (not a thematic break)")
+    func dashAIsList() {
+        // `- a` is a bullet list item, distinct from the thematic-break-shaped
+        // `- - -`; the list branch (T20) sits below the thematic-break branch.
         let out = BlockParser(defs: DefinitionStore()).parse(["- a"], depth: 0)
-        #expect(out == [.paragraph(raw: "- a")])
+        #expect(out == [
+            .list(RawList(kind: .bullet, isTight: true, items: [
+                RawListItem(blocks: [.paragraph(raw: "a")], task: nil),
+            ])),
+        ])
     }
 
     @Test("`--` is a paragraph, not a thematic break")
