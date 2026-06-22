@@ -558,7 +558,7 @@ struct BlockParser {
 
         // Language = first whitespace-delimited word of the trimmed info string.
         // Trailing spaces in the info string are ignored.
-        var language: String? = nil
+        var language: String?
         var infoIter = info
         while let f = infoIter.first, f.isWhitespace { infoIter = infoIter.dropFirst() }
         if !infoIter.isEmpty {
@@ -714,7 +714,7 @@ struct BlockParser {
         var afterDest = rest
         while let f = afterDest.first, f.isWhitespace { afterDest = afterDest.dropFirst() }
 
-        var title: String? = nil
+        var title: String?
         if !afterDest.isEmpty {
             let q = afterDest.first!
             if q == "\"" || q == "'" || q == "(" {

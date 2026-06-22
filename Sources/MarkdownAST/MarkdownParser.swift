@@ -13,7 +13,7 @@ public enum MarkdownParser {
         // Pass A: line preprocessing + block scan into raw leaves.
         let lines = splitIntoLines(source).map { expandTabs($0) }
         let defs = DefinitionStore()
-        let _ = BlockParser(defs: defs).parse(lines, depth: 0)
+        _ = BlockParser(defs: defs).parse(lines, depth: 0)
 
         // Pass B: resolve [RawBlock] into [MarkdownBlock] with parsed inlines.
         // Stub — lands in a later task. Until then `parse` returns an empty

@@ -1,0 +1,54 @@
+# SwiftLint configuration for swiftui-markdown
+# Run:  swiftlint           (lint)
+#       swiftlint --fix     (autocorrect formatting rules)
+
+included:
+  - Sources
+  - Tests
+
+# A hand-written recursive-descent scanner uses idiomatic short loop/cursor
+# variables (i, s, ch, m, f). These are clear in their local context, so we
+# allow single-character names rather than forcing verbose scanner vars.
+identifier_name:
+  min_length:
+    warning: 1
+    error: 1
+  allowed_symbols:
+    - _
+
+# The block dispatcher is one large switch over every CommonMark/GFM block
+# type; high complexity and length there is inherent to the grammar, not a
+# smell. Thresholds are relaxed to fit the parser's shape while still catching
+# runaway growth.
+cyclomatic_complexity:
+  warning: 25
+  error: 40
+function_body_length:
+  warning: 90
+  error: 250
+type_body_length:
+  warning: 450
+  error: 600
+file_length:
+  warning: 1000
+  error: 1500
+
+line_length:
+  warning: 120
+  error: 200
+  ignores_comments: true
+  ignores_urls: true
+
+# A few high-signal opt-in rules worth enforcing in new code.
+# `empty_string` (prefer .isEmpty over == "") is intentionally NOT enabled yet:
+# the current code uses `== ""` consistently; enable it + `swiftlint --fix`
+# when ready to migrate.
+opt_in_rules:
+  - empty_count
+  - first_where
+  - contains_over_first_not_nil
+  - last_where
+  - sorted_first_last
+  - redundant_nil_coalescing
+  - toggle_bool
+  - unused_import

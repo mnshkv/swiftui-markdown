@@ -15,7 +15,7 @@ struct HeadingTests {
             .heading(level: 3, raw: "H3"),
             .heading(level: 4, raw: "H4"),
             .heading(level: 5, raw: "H5"),
-            .heading(level: 6, raw: "H6"),
+            .heading(level: 6, raw: "H6")
         ])
     }
 
