@@ -46,6 +46,24 @@ struct BlockParser {
                 // ATX headings interrupt a pending paragraph.
                 flush()
                 blocks.append(.heading(level: h.level, raw: h.raw))
+            } else if let fence = fenceOpener(Substring(line)) {
+                // Fenced code blocks interrupt a pending paragraph (CommonMark §4.5).
+                flush()
+                // Consume content lines until a matching closer is found or EOF.
+                var content: [String] = []
+                i += 1
+                while i < lines.count {
+                    let cl = lines[i]
+                    if isFenceCloser(Substring(cl), of: fence) {
+                        break
+                    }
+                    content.append(stripIndent(cl, indent: fence.indent))
+                    i += 1
+                }
+                // If the loop ended because of a closer, `i` points at it; we fall
+                // through and the outer `i += 1` advances past it. If it ended at
+                // EOF, `i == lines.count` and the outer loop terminates.
+                blocks.append(.codeBlock(language: fence.language, code: content.joined(separator: "\n")))
             } else {
                 pending.append(trimWhitespace(line))
             }
@@ -152,6 +170,113 @@ struct BlockParser {
         var s = Substring(line)
         while let first = s.first, first.isWhitespace { s = s.dropFirst() }
         while let last = s.last, last.isWhitespace { s = s.dropLast() }
+        return String(s)
+    }
+
+    // MARK: - Fenced code blocks (CommonMark §4.5)
+
+    /// Captured opener metadata for matching the closer.
+    private struct Fence {
+        let char: Character
+        let count: Int
+        let language: String?
+        let indent: Int
+    }
+
+    /// Attempts to recognize a fenced-code-block opening fence in `line`.
+    ///
+    /// Rules: 0–3 leading spaces (4+ ⇒ not a fence); a run of ≥3 backticks OR
+    /// ≥3 tildes; an info string after the run. For backtick fences the info
+    /// string must NOT contain a backtick (otherwise the line is not a valid
+    /// opener). For tilde fences the info string may contain anything.
+    /// `language` is the first whitespace-delimited word of the trimmed info
+    /// string, or `nil` if the info string is empty/whitespace-only.
+    private func fenceOpener(_ line: Substring) -> Fence? {
+        // Count 0–3 leading spaces. ≥4 ⇒ not a fence (indented-code territory).
+        var indent = 0
+        var idx = line.startIndex
+        while idx < line.endIndex, line[idx] == " " {
+            indent += 1
+            idx = line.index(after: idx)
+        }
+        guard indent <= 3 else { return nil }
+
+        // Need a fence char next.
+        guard idx < line.endIndex else { return nil }
+        let ch = line[idx]
+        guard ch == "`" || ch == "~" else { return nil }
+
+        // Count the fence-char run (must be ≥3).
+        var count = 0
+        while idx < line.endIndex, line[idx] == ch {
+            count += 1
+            idx = line.index(after: idx)
+        }
+        guard count >= 3 else { return nil }
+
+        // The remainder is the info string.
+        let info = line[idx...]
+
+        // Backtick fences: info string must not contain a backtick.
+        if ch == "`", info.contains("`") { return nil }
+
+        // Language = first whitespace-delimited word of the trimmed info string.
+        // Trailing spaces in the info string are ignored.
+        var language: String? = nil
+        var infoIter = info
+        while let f = infoIter.first, f.isWhitespace { infoIter = infoIter.dropFirst() }
+        if !infoIter.isEmpty {
+            // Collect up to the next whitespace.
+            var word = infoIter
+            var endIdx = word.startIndex
+            while endIdx < word.endIndex, !word[endIdx].isWhitespace {
+                endIdx = word.index(after: endIdx)
+            }
+            word = word[word.startIndex..<endIdx]
+            if !word.isEmpty { language = String(word) }
+        }
+
+        return Fence(char: ch, count: count, language: language, indent: indent)
+    }
+
+    /// True iff `line` is a matching closing fence for `fence`.
+    ///
+    /// Rules: 0–3 leading spaces (strip them); a run of the SAME fence char of
+    /// length ≥ `fence.count`; then ONLY trailing whitespace (nothing else).
+    /// Non-whitespace after the run ⇒ not a closer (it's content).
+    private func isFenceCloser(_ line: Substring, of fence: Fence) -> Bool {
+        // Strip 0–3 leading spaces. ≥4 leading spaces ⇒ not a closer (content).
+        var leading = 0
+        var idx = line.startIndex
+        while idx < line.endIndex, line[idx] == " " {
+            leading += 1
+            idx = line.index(after: idx)
+        }
+        guard leading <= 3 else { return false }
+
+        // Count the fence-char run.
+        var count = 0
+        while idx < line.endIndex, line[idx] == fence.char {
+            count += 1
+            idx = line.index(after: idx)
+        }
+        guard count >= fence.count else { return false }
+
+        // The remainder must be only whitespace.
+        let rest = line[idx...]
+        return rest.allSatisfy { $0.isWhitespace }
+    }
+
+    /// Strips exactly `indent` leading spaces from `line`. If `line` has fewer
+    /// leading spaces, strips as many as present (never goes negative, never
+    /// pads). Content is otherwise kept literal (no internal/trailing trim).
+    private func stripIndent(_ line: String, indent: Int) -> String {
+        var stripped = 0
+        var s = Substring(line)
+        while stripped < indent, let f = s.first, f == " " {
+            s = s.dropFirst()
+            stripped += 1
+        }
         return String(s)
     }
 }
