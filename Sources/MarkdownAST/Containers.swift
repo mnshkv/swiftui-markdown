@@ -6,13 +6,8 @@
 // so `stripUpTo3Spaces` only handles space characters — it does NOT attempt to
 // handle tabs.
 
-/// Drops 0–3 leading spaces from `line`. If `line` has 4 or more leading
-/// spaces, returns it unchanged so that an indented-code block remains
-/// detectable.
-///
-/// - `"   # H"` (3 spaces) → `"# H"`
-/// - `"    code"` (4 spaces) → `"    code"` (kept)
-/// - `""` → `""`
+/// Drops 0–3 leading spaces from `line`; lines with 4+ leading spaces are
+/// returned unchanged so indented-code blocks remain detectable.
 func stripUpTo3Spaces(_ line: Substring) -> Substring {
     var leading = 0
     for ch in line {
@@ -21,12 +16,8 @@ func stripUpTo3Spaces(_ line: Substring) -> Substring {
     return leading >= 4 ? line : line.drop(while: { $0 == " " })
 }
 
-/// Returns true if `line` begins a block construct that can interrupt or
-/// convert an open paragraph (K3 gating). Single-line detectable only:
-/// ATX heading, setext underline (`===`/`---`), fenced code, thematic break,
-/// blockquote (`>`), or a minimal list-marker peek. Returns false for table,
-/// link-ref-def, footnote-def (handled by their own parsers in later tasks),
-/// indented code (≥4 leading spaces), and plain text.
+/// True if `line` begins a single-line-detectable block construct (ATX/setext
+/// heading, fence, thematic break, blockquote, or list marker) for K3 gating.
 func isBlockStart(_ line: Substring) -> Bool {
     let s = stripUpTo3Spaces(line)
     guard !s.isEmpty else { return false }
@@ -73,12 +64,8 @@ func isBlockStart(_ line: Substring) -> Bool {
     return false
 }
 
-/// Returns true if `line` can interrupt an open paragraph. Per CommonMark:
-/// ATX heading, thematic break, blockquote, fenced code, unordered list
-/// (non-empty item), and ordered list with start number 1 (non-empty item)
-/// interrupt. Setext underline does NOT interrupt here (it converts the
-/// pending paragraph into a heading — handled by the dispatcher, not by
-/// interruption). Indented code (≥4 leading spaces) does not interrupt.
+/// True if `line` can interrupt an open paragraph per CommonMark (ATX heading,
+/// thematic break, blockquote, fence, or a non-empty list item; setext does not).
 func canInterruptParagraph(_ line: Substring) -> Bool {
     let s = stripUpTo3Spaces(line)
     guard !s.isEmpty else { return false }
@@ -223,9 +210,8 @@ private func isOrderedMarkerAny(_ s: Substring) -> Bool {
     return after == " " || after == "\t"
 }
 
-/// True if `s` is an ordered marker whose start number is exactly `1`, followed
-/// by a space and non-whitespace content — the only ordered list that may
-/// interrupt a paragraph.
+/// True if `s` is an ordered marker with start number `1` followed by
+/// non-empty content — the only ordered list that may interrupt a paragraph.
 private func isOrderedListStartOneNonEmpty(_ s: Substring) -> Bool {
     var i = s.startIndex
     var digits = ""

@@ -32,12 +32,8 @@ struct ListMarker: Equatable {
     var contentStart: Int
 }
 
-/// Recognizes a CommonMark §5.1 list marker at the start of `line`.
-///
-/// Returns nil for: ≥4 leading spaces (indented code), no marker char, no
-/// required ≥1 separator space, or ordered digit runs longer than 9 digits.
-/// Does NOT special-case thematic-break-like content (e.g. `- - -`): a valid
-/// marker is reported faithfully; precedence is the dispatcher's job.
+/// Recognizes a CommonMark §5.1 bullet or ordered list marker at the start of `line`.
+/// Returns its geometry, or nil if no valid marker is present.
 func listMarker(_ line: Substring) -> ListMarker? {
     var i = line.startIndex
 
@@ -50,7 +46,6 @@ func listMarker(_ line: Substring) -> ListMarker? {
     if leadingIndent >= 4 { return nil }
     if i == line.endIndex { return nil }
 
-    let markerStart = i
     let first = line[i]
 
     // Bullet marker: `-`, `+`, or `*` followed by ≥1 space.

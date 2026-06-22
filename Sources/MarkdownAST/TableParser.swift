@@ -6,23 +6,8 @@
 //
 // Pure Swift, no Foundation: all scanning is manual character iteration.
 
-/// Split a GFM table row into cells.
-///
-/// Rules (GFM §4.6 + task spec):
-/// - Split on `|`, but a `\` immediately followed by `|` is a literal pipe
-///   (NOT a split point); after splitting, the `\` is removed so the cell
-///   contains a literal `|`.
-/// - Other `\x` sequences are kept LITERAL (the `\` stays) for the inline
-///   pass (Task 25) to resolve.
-/// - One optional leading `|` and one optional trailing `|` are stripped
-///   (they are delimiters, not cell content).
-/// - Each resulting cell is trimmed of leading/trailing whitespace.
-///
-/// Examples:
-/// - `| a | b |` → `["a", "b"]`
-/// - `a | b`     → `["a", "b"]`
-/// - `| a \| b |` → `["a | b"]`   (the `\|` unescaped to a literal `|`)
-/// - `| a \* b |` → `["a \* b"]`  (the `\*` kept literal for the inline pass)
+/// Split a GFM table row into trimmed cells, treating `\|` as a literal pipe and
+/// keeping other `\x` literal; optional leading/trailing delimiter pipes are stripped.
 func splitTableRow(_ line: String) -> [String] {
     // First pass: walk the string, building a buffer of chars while tracking
     // `\` escapes. Unescaped `|` becomes a split boundary; `\|` becomes a
@@ -71,17 +56,8 @@ func splitTableRow(_ line: String) -> [String] {
     return cells.map { trimCellWhitespace($0) }
 }
 
-/// Validate a GFM table delimiter row and return the per-column alignments.
-///
-/// Rules:
-/// - Split the row into cells via `splitTableRow` (so `\|` in a delimiter is
-///   a literal pipe — unusual but consistent).
-/// - The whole row (raw, before splitting) must contain ONLY `|`, `-`, `:`,
-///   and whitespace. Any other character ⇒ reject (return nil).
-/// - Each trimmed cell must match `:?-+:?` (optional `:`, one or more `-`,
-///   optional `:`). Empty cells or cells with other chars ⇒ reject.
-/// - Map each cell to its alignment: leading `:` only → `.left`; trailing
-///   `:` only → `.right`; both `:` → `.center`; neither `:` → `.none`.
+/// Validate a GFM delimiter row (cells matching `:?-+:?`, only `|`/`-`/`:`/space) and
+/// return the per-column alignments, or nil if invalid.
 func delimiterAlignments(_ line: String) -> [MarkdownTable.Alignment]? {
     // Safety reject: the raw row must only contain `|`, `-`, `:`, whitespace.
     for ch in line {

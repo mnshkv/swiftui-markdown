@@ -9,9 +9,8 @@
 /// Out of scope (passed through as literal text): HTML blocks and inline HTML, character/entity
 /// references, nested links, info strings containing backticks, and other rare CommonMark corners.
 public enum MarkdownParser {
-    /// Parses `source` into a `MarkdownDocument`. Pass A scans the text into raw
-    /// blocks; Pass B (resolving them into inline AST) is a later task, so this
-    /// currently returns an empty document.
+    /// Parses `source` into a `MarkdownDocument`. Pass B (inline resolution) is a
+    /// later task, so this currently returns an empty document.
     public static func parse(_ source: String) -> MarkdownDocument {
         // Pass A: line preprocessing + block scan into raw leaves.
         let lines = splitIntoLines(source).map { expandTabs($0) }

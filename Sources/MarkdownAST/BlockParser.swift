@@ -359,22 +359,6 @@ struct BlockParser {
 
     /// Returns the setext-heading level (1 for `=`, 2 for `-`) if `line` is a
     /// setext underline (CommonMark §4.3), otherwise `nil`.
-    ///
-    /// A setext underline is a line of 0–3 leading spaces followed by a
-    /// contiguous run of a single character (`=` or `-`, ≥1), optionally with
-    /// trailing whitespace, and nothing else. 4+ leading spaces ⇒ NOT a
-    /// setext underline (indented-code territory; at this wave it falls
-    /// through to paragraph-accumulate).
-    ///
-    /// Implementation note: `Containers.swift` declares `isSetextUnderline(_:ch:)`,
-    /// but it is `private` (file-scoped) and thus not callable from this file
-    /// without widening its access — the task forbade modifying
-    /// `Containers.swift`, so this helper is local. It is also STRICTER than
-    /// `isSetextUnderline`: that helper allows spaces anywhere (so `- - -`
-    /// would be accepted as a `-` setext underline), which would mis-classify
-    /// `para\n- - -` (a paragraph + thematic break) as an h2. This helper
-    /// requires a contiguous run + trailing whitespace only, matching
-    /// CommonMark §4.3. See the task-16 report for details.
     private func setextUnderlineLevel(_ line: String) -> Int? {
         let s = stripUpTo3Spaces(Substring(line))
         // `stripUpTo3Spaces` returns a ≥4-space-indented line unchanged, so
@@ -391,22 +375,15 @@ struct BlockParser {
     }
 
     /// True iff `line` is a thematic break (CommonMark §4.1), honoring the
-    /// 4-space indented-code gate. `isThematicBreak` (in `Containers.swift`)
-    /// operates on an already-`stripUpTo3Spaces`'d line and does NOT reject a
-    /// leading-space prefix, so we gate here: when the original line has ≥4
-    /// leading spaces, `stripUpTo3Spaces` returns it unchanged and
-    /// `stripped.first == " "` ⇒ fall through (indented code, not a break).
+    /// 4-space indented-code gate.
     private func isThematicBreakLine(_ line: String) -> Bool {
         let stripped = stripUpTo3Spaces(Substring(line))
         guard stripped.first != " " else { return false }
         return isThematicBreak(stripped)
     }
 
-    /// Attempts to recognize an ATX heading (CommonMark §4.2) in `line`.
-    ///
-    /// Rules: 0–3 leading spaces (4+ ⇒ not a heading); 1–6 `#` followed by a
-    /// space or end-of-line; a trailing `#` run is stripped only if preceded
-    /// by a space; the final text is whitespace-trimmed.
+    /// Recognizes an ATX heading (CommonMark §4.2) in `line`, returning its
+    /// level and trimmed text, or `nil` if `line` is not an ATX heading.
     private func atxHeading(_ line: Substring) -> (level: Int, raw: String)? {
         let s = stripUpTo3Spaces(line)
         guard let first = s.first, first == "#" else { return nil }
@@ -474,10 +451,8 @@ struct BlockParser {
         return (level: hashes, raw: String(text))
     }
 
-    /// CommonMark "spaces and tabs": only ASCII space (U+0020) and tab (U+0009).
-    /// Unicode whitespace such as NBSP (U+00A0) is ordinary content, so we must
-    /// NOT use `Character.isWhitespace` (which is true for NBSP, en/em spaces,
-    /// etc.) when deciding blank lines or stripping indentation.
+    /// True iff `c` is an ASCII space (U+0020) or tab (U+0009); Unicode
+    /// whitespace such as NBSP is treated as ordinary content (CommonMark).
     private func isSpaceOrTab(_ c: Character) -> Bool {
         c == " " || c == "\t"
     }
@@ -488,8 +463,8 @@ struct BlockParser {
         line.allSatisfy { isSpaceOrTab($0) }
     }
 
-    /// Trim leading and trailing ASCII spaces/tabs from `line` (no Foundation).
-    /// Unicode whitespace is preserved as content (see `isSpaceOrTab`).
+    /// Trims leading and trailing ASCII spaces/tabs from `line`; Unicode
+    /// whitespace is preserved as content (see `isSpaceOrTab`).
     private func trimWhitespace(_ line: String) -> String {
         var s = Substring(line)
         while let first = s.first, isSpaceOrTab(first) { s = s.dropFirst() }
@@ -499,20 +474,8 @@ struct BlockParser {
 
     // MARK: - Block quotes (CommonMark §5.1)
 
-    /// Recognizes a blockquote marker and returns the inner line (the content
-    /// after stripping the marker). Returns `nil` if `line` does not begin a
-    /// blockquote.
-    ///
-    /// Rules: 0–3 leading spaces (via `stripUpTo3Spaces`; 4+ ⇒ not a marker,
-    /// the line falls through to indented-code/paragraph handling); then a
-    /// leading `>`; then optionally ONE following space or tab is stripped
-    /// (only one — additional spaces are preserved as inner content).
-    ///
-    /// - `   > hello` → `hello`
-    /// - `>hello`     → `hello`
-    /// - `>  hello`   → ` hello`  (one space remains)
-    /// - `>`          → ``        (empty inner line — blank line in quote)
-    /// - `    > q`    → `nil`     (4 leading spaces ⇒ not a marker)
+    /// Recognizes a blockquote marker (0–3 spaces, `>`, one optional space) and
+    /// returns the inner content, or `nil` if `line` does not begin a blockquote.
     private func blockquoteMarker(_ line: Substring) -> Substring? {
         let s = stripUpTo3Spaces(line)
         guard s.first == ">" else { return nil }
@@ -534,14 +497,8 @@ struct BlockParser {
         let indent: Int
     }
 
-    /// Attempts to recognize a fenced-code-block opening fence in `line`.
-    ///
-    /// Rules: 0–3 leading spaces (4+ ⇒ not a fence); a run of ≥3 backticks OR
-    /// ≥3 tildes; an info string after the run. For backtick fences the info
-    /// string must NOT contain a backtick (otherwise the line is not a valid
-    /// opener). For tilde fences the info string may contain anything.
-    /// `language` is the first whitespace-delimited word of the trimmed info
-    /// string, or `nil` if the info string is empty/whitespace-only.
+    /// Recognizes a fenced-code-block opening fence (CommonMark §4.5) in `line`,
+    /// returning its captured metadata, or `nil` if `line` is not an opener.
     private func fenceOpener(_ line: Substring) -> Fence? {
         // Count 0–3 leading spaces. ≥4 ⇒ not a fence (indented-code territory).
         var indent = 0
@@ -590,11 +547,8 @@ struct BlockParser {
         return Fence(char: ch, count: count, language: language, indent: indent)
     }
 
-    /// True iff `line` is a matching closing fence for `fence`.
-    ///
-    /// Rules: 0–3 leading spaces (strip them); a run of the SAME fence char of
-    /// length ≥ `fence.count`; then ONLY trailing whitespace (nothing else).
-    /// Non-whitespace after the run ⇒ not a closer (it's content).
+    /// True iff `line` is a matching closing fence for `fence` (0–3 spaces, a
+    /// run of the same char ≥ `fence.count`, then only trailing whitespace).
     private func isFenceCloser(_ line: Substring, of fence: Fence) -> Bool {
         // Strip 0–3 leading spaces. ≥4 leading spaces ⇒ not a closer (content).
         var leading = 0
@@ -618,9 +572,8 @@ struct BlockParser {
         return rest.allSatisfy { $0.isWhitespace }
     }
 
-    /// Strips exactly `indent` leading spaces from `line`. If `line` has fewer
-    /// leading spaces, strips as many as present (never goes negative, never
-    /// pads). Content is otherwise kept literal (no internal/trailing trim).
+    /// Strips up to `indent` leading spaces from `line` (as many as present),
+    /// keeping the rest literal.
     private func stripIndent(_ line: String, indent: Int) -> String {
         var stripped = 0
         var s = Substring(line)
@@ -633,17 +586,8 @@ struct BlockParser {
 
     // MARK: - Definition lists (PHP-Markdown-Extra style)
 
-    /// Recognizes a definition-list detail line (`:`-led) and returns its
-    /// content. Rules: 0–3 leading spaces (via `stripUpTo3Spaces`; 4+ ⇒ not a
-    /// detail line — indented-code/paragraph territory); then a leading `:`;
-    /// then ONE optional following space or tab is stripped (only one —
-    /// additional spaces are preserved as content), mirroring blockquote `>`.
-    ///
-    /// - `: Definition` → `Definition`
-    /// - `:foo`         → `foo`    (strip `:` only)
-    /// - `:  hello`     → ` hello` (one space remains)
-    /// - `  : x`        → `x`      (0–3 leading spaces allowed)
-    /// - `    : x`      → `nil`    (4 leading spaces ⇒ not a detail line)
+    /// Recognizes a definition-list detail line (0–3 spaces, `:`, one optional
+    /// space) and returns its content, or `nil` if `line` is not a detail line.
     private func detailLineContent(_ line: String) -> String? {
         let s = stripUpTo3Spaces(Substring(line))
         guard s.first == ":" else { return nil }
@@ -655,8 +599,7 @@ struct BlockParser {
     }
 
     /// True iff `line` is an indented continuation of the current definition
-    /// detail: has ≥1 leading whitespace char, is not blank, and is NOT a
-    /// `:`-led detail line (so a detail line isn't mistaken for continuation).
+    /// detail: leading whitespace, non-blank, and not a `:`-led detail line.
     private func isIndentedContinuation(_ line: String) -> Bool {
         guard line.first?.isWhitespace == true else { return false }
         if isBlank(line) { return false }
@@ -666,26 +609,8 @@ struct BlockParser {
 
     // MARK: - Link reference definitions (CommonMark §6.1)
 
-    /// Attempts to parse `line` as a link reference definition
-    /// `[label]: destination "title"`. On success, registers the definition in
-    /// `defs` and returns `true` (the line is removed from the block output).
-    /// On failure returns `false` (the line falls through to paragraph text).
-    ///
-    /// Rules (single-line; multi-line titles are a future extension):
-    /// - 0–3 leading spaces (4+ ⇒ not a link-ref-def).
-    /// - Label: `[` ... `]` (text between first `[` and first `]`). Must contain
-    ///   at least one non-whitespace char. `[^...]` (footnote) is rejected here
-    ///   — handled by `footnoteDefinition`.
-    /// - After `]`: a `:`, then optional whitespace.
-    /// - Destination: either a bare run of non-whitespace chars, or `<...>`
-    ///   (angle-bracket destination; `<` and `>` stripped, spaces allowed
-    ///   inside).
-    /// - Title (optional): `"..."`, `'...'`, or `(...)`. The quoting char is
-    ///   stripped. An empty title `""` is stored as `""` (not nil); absence of
-    ///   a title is stored as `nil`.
-    /// - Trailing-junk rejection (M11): after the title (or after the
-    ///   destination if no title), only trailing whitespace is allowed. Any
-    ///   non-whitespace leftover ⇒ the whole line is rejected.
+    /// Parses `line` as a link reference definition `[label]: dest "title"`,
+    /// registering it in `defs` and returning `true`, else `false` (CommonMark §6.1).
     private func linkReferenceDefinition(_ line: String) -> Bool {
         let s = stripUpTo3Spaces(Substring(line))
         guard s.first == "[" else { return false }
@@ -763,23 +688,8 @@ struct BlockParser {
         let consumed: Int
     }
 
-    /// Attempts to parse a footnote definition starting at `lines[start]`.
-    /// Format: `[^id]: body`. The body includes the first line's content plus
-    /// continuation lines indented ≥4 spaces (4 leading spaces stripped) and
-    /// blank lines that precede further indented content (multi-paragraph
-    /// support). On success returns the parsed footnote; on failure `nil`.
-    ///
-    /// Body collection:
-    /// - First line: content after `[^id]:` + one optional leading space.
-    /// - Continuation lines:
-    ///   - Indented ≥4 spaces (non-blank) → strip 4, append.
-    ///   - Blank → peek ahead: if the next non-blank line is indented ≥4,
-    ///     append `""` (multi-paragraph blank) and continue; otherwise the
-    ///     blank ends the body (NOT consumed — left for the outer loop).
-    ///   - Dedented (non-blank, <4 spaces) → body ends (NOT consumed).
-    /// `consumed` counts the first line + all consumed continuation lines. The
-    /// terminator (blank or dedented line) is NOT consumed; the caller adjusts
-    /// `i` so the outer `i += 1` re-lands on it.
+    /// Parses a footnote definition `[^id]: body` starting at `lines[start]`,
+    /// returning the id, body lines, and lines consumed, or `nil` on failure.
     private func footnoteDefinition(_ lines: [String], from start: Int) -> FootnoteParse? {
         let line = lines[start]
         let s = stripUpTo3Spaces(Substring(line))
@@ -837,16 +747,7 @@ struct BlockParser {
     }
 
     /// True iff `line` begins an indented code block content line (CommonMark
-    /// §4.4): ≥4 leading spaces AND the line is not ONLY spaces after the first
-    /// 4. A line of all spaces (≥4) is a BLANK line, not indented code.
-    ///
-    /// The `hasPrefix("    ")` check operates on the RAW line. Tabs are
-    /// expanded to spaces upstream (Task 2), so a tab-led line becomes spaces
-    /// — no special tab handling is needed here.
-    ///
-    /// Note the operand order fixes the v1 ternary-precedence bug F13: the
-    /// negated `allSatisfy` is the right-hand operand of `&&`, so a `&&`-chain
-    /// can never accidentally bind the wrong way.
+    /// §4.4): ≥4 leading spaces and not entirely spaces (which would be blank).
     private func isIndentedCode(_ line: String) -> Bool {
         line.hasPrefix("    ") && !line.dropFirst(4).allSatisfy { $0 == " " }
     }
