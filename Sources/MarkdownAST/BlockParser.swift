@@ -171,6 +171,74 @@ struct BlockParser {
                     header: [headerCells],
                     rows: rows
                 )))
+            } else if pending.count == 1, let dc = detailLineContent(line) {
+                // Definition list (PHP-Markdown-Extra style). Trigger: the
+                // current line is a `:`-led detail line AND the pending
+                // paragraph has exactly ONE line (the term). A `:` line
+                // without a one-line term falls through to paragraph text.
+                let term = pending[0]
+                pending.removeAll(keepingCapacity: true)
+                var definitions: [RawDefinition] = []
+                var curDef = RawDefinition(term: term, details: [])
+                // The first `: content` line is already consumed as the
+                // trigger; seed the first detail's content with it.
+                var curDetailLines: [String] = [dc]
+                var inDetail = true
+                i += 1
+                while i < lines.count {
+                    let l = lines[i]
+                    if let d = detailLineContent(l) {
+                        // Each `:` line starts a NEW detail entry.
+                        if inDetail {
+                            curDef.details.append(
+                                BlockParser(defs: defs).parse(curDetailLines, depth: depth + 1)
+                            )
+                            curDetailLines = []
+                        }
+                        curDetailLines = [d]
+                        inDetail = true
+                        i += 1
+                    } else if isIndentedContinuation(l) {
+                        // Leading-whitespace, non-blank, non-`:` line folds
+                        // into the CURRENT detail's content (raw, indent
+                        // kept — `parse` per-line-trims it).
+                        curDetailLines.append(l)
+                        i += 1
+                    } else if isBlank(l) {
+                        // Blank line ends the list. Decrement-reland so the
+                        // outer `i += 1` re-lands on the blank as a sibling.
+                        i -= 1
+                        break
+                    } else {
+                        // Non-indented, non-`:`, non-blank → potential new
+                        // term. Close the current detail first.
+                        if inDetail {
+                            curDef.details.append(
+                                BlockParser(defs: defs).parse(curDetailLines, depth: depth + 1)
+                            )
+                            curDetailLines = []
+                            inDetail = false
+                        }
+                        if i + 1 < lines.count, detailLineContent(lines[i + 1]) != nil {
+                            // Lookahead: next line is `:`-led → this line is a
+                            // new term in the SAME definition list.
+                            definitions.append(curDef)
+                            curDef = RawDefinition(term: trimWhitespace(l), details: [])
+                            i += 1
+                        } else {
+                            // Not a new term → end of list (decrement-reland).
+                            i -= 1
+                            break
+                        }
+                    }
+                }
+                if inDetail {
+                    curDef.details.append(
+                        BlockParser(defs: defs).parse(curDetailLines, depth: depth + 1)
+                    )
+                }
+                definitions.append(curDef)
+                blocks.append(.definitionList(definitions))
             } else {
                 pending.append(trimWhitespace(line))
             }
@@ -412,5 +480,38 @@ struct BlockParser {
             stripped += 1
         }
         return String(s)
+    }
+
+    // MARK: - Definition lists (PHP-Markdown-Extra style)
+
+    /// Recognizes a definition-list detail line (`:`-led) and returns its
+    /// content. Rules: 0–3 leading spaces (via `stripUpTo3Spaces`; 4+ ⇒ not a
+    /// detail line — indented-code/paragraph territory); then a leading `:`;
+    /// then ONE optional following space or tab is stripped (only one —
+    /// additional spaces are preserved as content), mirroring blockquote `>`.
+    ///
+    /// - `: Definition` → `Definition`
+    /// - `:foo`         → `foo`    (strip `:` only)
+    /// - `:  hello`     → ` hello` (one space remains)
+    /// - `  : x`        → `x`      (0–3 leading spaces allowed)
+    /// - `    : x`      → `nil`    (4 leading spaces ⇒ not a detail line)
+    private func detailLineContent(_ line: String) -> String? {
+        let s = stripUpTo3Spaces(Substring(line))
+        guard s.first == ":" else { return nil }
+        var rest = s.dropFirst()
+        if rest.first == " " || rest.first == "\t" {
+            rest = rest.dropFirst()
+        }
+        return String(rest)
+    }
+
+    /// True iff `line` is an indented continuation of the current definition
+    /// detail: has ≥1 leading whitespace char, is not blank, and is NOT a
+    /// `:`-led detail line (so a detail line isn't mistaken for continuation).
+    private func isIndentedContinuation(_ line: String) -> Bool {
+        guard line.first?.isWhitespace == true else { return false }
+        if isBlank(line) { return false }
+        if detailLineContent(line) != nil { return false }
+        return true
     }
 }
