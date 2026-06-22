@@ -10,7 +10,17 @@
 /// references, nested links, info strings containing backticks, and other rare CommonMark corners.
 public enum MarkdownParser {
     public static func parse(_ source: String) -> MarkdownDocument {
-        MarkdownDocument(blocks: [], footnotes: [])
+        // Pass A: line preprocessing + block scan into raw leaves.
+        let lines = splitIntoLines(source).map { expandTabs($0) }
+        let defs = DefinitionStore()
+        let _ = BlockParser(defs: defs).parse(lines, depth: 0)
+
+        // Pass B: resolve [RawBlock] into [MarkdownBlock] with parsed inlines.
+        // Stub — lands in a later task. Until then `parse` returns an empty
+        // document; end-to-end paragraph output arrives with Pass B.
+        let blocks: [MarkdownBlock] = []
+        let footnotes: [FootnoteDefinition] = []
+        return MarkdownDocument(blocks: blocks, footnotes: footnotes)
     }
 }
 public struct MarkdownDocument: Equatable, Sendable, Hashable {
