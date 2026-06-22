@@ -31,6 +31,24 @@ struct BlockParser {
         var i = 0
         while i < lines.count {
             let line = lines[i]
+
+            // Setext heading (CommonMark §4.3). A setext heading is a pending
+            // paragraph followed by a setext underline line (`=` run → h1,
+            // `-` run → h2). This branch MUST precede the thematic-break and
+            // table branches: `Title\n---` is an h2 (setext), not a thematic
+            // break, and `para\n---` is an h2, not a GFM table (the table
+            // branch's `Title` header + `---` delimiter would otherwise match).
+            // The `!pending.isEmpty` guard is the disambiguator: a LONE `---`
+            // (no pending paragraph) skips this branch and reaches the
+            // thematic-break branch → thematic break (T9 behavior preserved).
+            if !pending.isEmpty, let level = setextUnderlineLevel(line) {
+                blocks.append(.heading(level: level, raw: pending.joined(separator: "\n")))
+                pending.removeAll(keepingCapacity: true)
+                i += 1 // consume only the underline line; pending lines were
+                       // already consumed by accumulation.
+                continue
+            }
+
             if isBlank(line) {
                 flush()
             } else if isThematicBreakLine(line) {
@@ -118,7 +136,7 @@ struct BlockParser {
                 // lines; the outer `i += 1` re-lands on the terminator (or EOF).
                 defs.addFootnote(id: fn.id, bodyLines: fn.bodyLines)
                 i += fn.consumed - 1
-            } else if pending.isEmpty, i + 1 < lines.count {
+            } else if pending.isEmpty, i + 1 < lines.count, setextUnderlineLevel(lines[i + 1]) == nil {
                 // GFM table (§4.6). Tables cannot interrupt a paragraph (F7):
                 // only start one when the pending paragraph is empty. The
                 // header is `lines[i]`; the delimiter is `lines[i+1]`;
@@ -265,6 +283,39 @@ struct BlockParser {
         flush()
 
         return blocks
+    }
+
+    /// Returns the setext-heading level (1 for `=`, 2 for `-`) if `line` is a
+    /// setext underline (CommonMark §4.3), otherwise `nil`.
+    ///
+    /// A setext underline is a line of 0–3 leading spaces followed by a
+    /// contiguous run of a single character (`=` or `-`, ≥1), optionally with
+    /// trailing whitespace, and nothing else. 4+ leading spaces ⇒ NOT a
+    /// setext underline (indented-code territory; at this wave it falls
+    /// through to paragraph-accumulate).
+    ///
+    /// Implementation note: `Containers.swift` declares `isSetextUnderline(_:ch:)`,
+    /// but it is `private` (file-scoped) and thus not callable from this file
+    /// without widening its access — the task forbade modifying
+    /// `Containers.swift`, so this helper is local. It is also STRICTER than
+    /// `isSetextUnderline`: that helper allows spaces anywhere (so `- - -`
+    /// would be accepted as a `-` setext underline), which would mis-classify
+    /// `para\n- - -` (a paragraph + thematic break) as an h2. This helper
+    /// requires a contiguous run + trailing whitespace only, matching
+    /// CommonMark §4.3. See the task-16 report for details.
+    private func setextUnderlineLevel(_ line: String) -> Int? {
+        let s = stripUpTo3Spaces(Substring(line))
+        // `stripUpTo3Spaces` returns a ≥4-space-indented line unchanged, so
+        // `s.first == " "` rejects the 4-space case (and any blank line).
+        guard let first = s.first, first == "=" || first == "-" else { return nil }
+        let ch = first
+        // Contiguous run of `ch` (≥1 — `first` guarantees at least one).
+        var idx = s.startIndex
+        while idx < s.endIndex, s[idx] == ch { idx = s.index(after: idx) }
+        // After the run, only trailing whitespace is allowed.
+        let rest = s[idx...]
+        guard rest.allSatisfy({ $0.isWhitespace }) else { return nil }
+        return ch == "=" ? 1 : 2
     }
 
     /// True iff `line` is a thematic break (CommonMark §4.1), honoring the
