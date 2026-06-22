@@ -370,15 +370,25 @@ struct BlockParser {
         return blocks
     }
 
+    /// Number of leading ASCII spaces in `line`.
+    private func leadingSpaceCount(_ line: String) -> Int {
+        var n = 0
+        for ch in line { if ch == " " { n += 1 } else { break } }
+        return n
+    }
+
     /// Parses a list starting at `arr[start]`, collecting consecutive same-kind
     /// items. Each item's lines (marker remainder + continuation/nested lines,
     /// indent-stripped) are parsed recursively at `depth + 1` so nesting comes
-    /// for free. Returns the list and the index of the first unconsumed line.
+    /// for free. The list is loose if any blank line separates two block-level
+    /// children (between items or inside an item); a trailing blank is ignored.
+    /// Returns the list and the index of the first unconsumed line.
     private func parseList(_ arr: [String], from start: Int, firstMarker: ListMarker, depth: Int) -> (RawBlock, Int) {
         let kind = firstMarker.kind
         let bullet = firstMarker.bullet
         let delimiter = firstMarker.orderedDelimiter
         var items: [RawListItem] = []
+        var isLoose = false
         var i = start
         while i < arr.count {
             // Each item begins with a same-kind marker (same bullet char, or
@@ -390,32 +400,49 @@ struct BlockParser {
             // The marker remainder is the item's first content line.
             var itemLines: [String] = [String(arr[i].dropFirst(contentStart))]
             i += 1
-            // Collect the rest of the item: lines indented to `contentStart`
-            // (indent stripped so nested constructs parse at depth+1), or lazy
-            // paragraph continuations (non-indented, non-block-start lines).
-            // Stop at a blank line, an outer-indent marker (next item / sibling
-            // list), or an outer-indent block start (K3).
-            while i < arr.count {
+            itemLoop: while i < arr.count {
                 let cl = arr[i]
-                if isBlank(cl) { break }
-                var indent = 0
-                for ch in cl { if ch == " " { indent += 1 } else { break } }
-                if indent >= contentStart {
+                if isBlank(cl) {
+                    // Peek past consecutive blanks to the next non-blank line to
+                    // decide whether the blank is internal (loose) or trailing.
+                    var j = i
+                    while j < arr.count, isBlank(arr[j]) { j += 1 }
+                    if j >= arr.count {
+                        i = j // trailing blank(s) — consumed, not a looseness signal
+                        break itemLoop
+                    }
+                    let nextLine = arr[j]
+                    if leadingSpaceCount(nextLine) >= contentStart {
+                        // Blank between two blocks inside the item → loose.
+                        isLoose = true
+                        while i < j { itemLines.append(""); i += 1 }
+                    } else if let nm = listMarker(Substring(nextLine)),
+                              nm.bullet == bullet, nm.orderedDelimiter == delimiter {
+                        // Blank between two items of this list → loose.
+                        isLoose = true
+                        i = j
+                        break itemLoop
+                    } else {
+                        // Blank then a non-continuation line → the list ends.
+                        i = j
+                        break itemLoop
+                    }
+                } else if leadingSpaceCount(cl) >= contentStart {
                     itemLines.append(stripIndent(cl, indent: contentStart))
                     i += 1
                 } else if listMarker(Substring(cl)) != nil {
-                    break
+                    break itemLoop // outer-indent marker → next item / sibling list
                 } else if !isBlockStart(Substring(cl)) {
                     itemLines.append(cl) // lazy paragraph continuation
                     i += 1
                 } else {
-                    break
+                    break itemLoop // outer-indent block start (K3) ends the item
                 }
             }
             let blocks = BlockParser(defs: defs).parse(itemLines, depth: depth + 1)
             items.append(RawListItem(blocks: blocks, task: nil))
         }
-        return (.list(RawList(kind: kind, isTight: true, items: items)), i)
+        return (.list(RawList(kind: kind, isTight: !isLoose, items: items)), i)
     }
 
     /// Returns the setext-heading level (1 for `=`, 2 for `-`) if `line` is a

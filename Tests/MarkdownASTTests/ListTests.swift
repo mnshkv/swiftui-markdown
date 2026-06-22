@@ -60,4 +60,47 @@ struct ListTests {
             ])),
         ])
     }
+
+    @Test("blank line between items makes the list loose")
+    func looseListWhenBlankBetweenItems() {
+        let out = BlockParser(defs: DefinitionStore()).parse(["- a", "", "- b"], depth: 0)
+        #expect(out == [
+            .list(RawList(kind: .bullet, isTight: false, items: [
+                RawListItem(blocks: [.paragraph(raw: "a")], task: nil),
+                RawListItem(blocks: [.paragraph(raw: "b")], task: nil),
+            ])),
+        ])
+    }
+
+    @Test("no blank lines makes the list tight")
+    func tightListNoBlanks() {
+        let out = BlockParser(defs: DefinitionStore()).parse(["- a", "- b"], depth: 0)
+        #expect(out == [
+            .list(RawList(kind: .bullet, isTight: true, items: [
+                RawListItem(blocks: [.paragraph(raw: "a")], task: nil),
+                RawListItem(blocks: [.paragraph(raw: "b")], task: nil),
+            ])),
+        ])
+    }
+
+    @Test("blank line inside an item makes the list loose (multi-paragraph item)")
+    func looseWhenBlankInsideItem() {
+        let out = BlockParser(defs: DefinitionStore()).parse(["- a", "", "  b"], depth: 0)
+        #expect(out == [
+            .list(RawList(kind: .bullet, isTight: false, items: [
+                RawListItem(blocks: [.paragraph(raw: "a"), .paragraph(raw: "b")], task: nil),
+            ])),
+        ])
+    }
+
+    @Test("trailing blank after the last item is ignored (stays tight)")
+    func tightWithTrailingBlank() {
+        let out = BlockParser(defs: DefinitionStore()).parse(["- a", "- b", ""], depth: 0)
+        #expect(out == [
+            .list(RawList(kind: .bullet, isTight: true, items: [
+                RawListItem(blocks: [.paragraph(raw: "a")], task: nil),
+                RawListItem(blocks: [.paragraph(raw: "b")], task: nil),
+            ])),
+        ])
+    }
 }
