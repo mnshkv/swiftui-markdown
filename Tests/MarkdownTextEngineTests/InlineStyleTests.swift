@@ -67,10 +67,12 @@ struct InlineStyleTests {
         #expect(lines[1].origin.y > lines[0].origin.y)
     }
 
-    @Test("soft line break does not cause more lines than required by wrapping")
+    @Test("a soft line break (U+2028) starts a new line")
     func softLineBreak() {
         let s = TextStyle(fontSize: 17, color: .black)
-        // Soft break within a line that fits in the width
+        // Soft break (LINE SEPARATOR U+2028) within text that fits in a wide column.
+        // CoreText typesetter treats U+2028 as a mandatory line separator,
+        // so the two segments must appear on separate lines regardless of available width.
         let p = Paragraph(
             runs: [
                 .text("Hello", s),
@@ -83,9 +85,37 @@ struct InlineStyleTests {
         guard case .text(_, let lines) = layout.blocks[0] else {
             Issue.record("not text"); return
         }
-        // Soft break (LINE SEPARATOR U+2028) is treated as a line break by CoreText typesetter;
-        // we assert that both segments are laid out (at least 2 lines)
+        // U+2028 must force a line split — both segments are laid out on separate lines.
         #expect(lines.count >= 2)
+    }
+
+    @Test("hard line break as first run uses paragraph font, not default fallback font")
+    func hardLineBreakFirstRunHasFont() {
+        let s = TextStyle(fontSize: 24, color: .black)
+        // The very first run is a hard break — previously this got NO font attributes,
+        // causing CoreText to use a default fallback font and producing a spurious phantom line.
+        let p = Paragraph(
+            runs: [
+                .lineBreak(hard: true),
+                .text("After break", s)
+            ],
+            style: .body
+        )
+        let layout = LayoutEngine.layout(TextDocument(blocks: [.paragraph(p)]), width: 400)
+        guard case .text(_, let lines) = layout.blocks[0] else {
+            Issue.record("not text"); return
+        }
+        // Should produce exactly 2 lines: the break line and the text line.
+        // (If the break had no font attributes, CoreText could produce a phantom extra line
+        // with a default-font ascent that differs from s.fontSize.)
+        #expect(lines.count == 2)
+        // All lines must have positive, non-degenerate height.
+        #expect(lines.allSatisfy { $0.size.height > 0 })
+        // The text line's ascent must be consistent with font size 24.
+        // CTFont ascent for a 24pt system font is typically near 22–23 pt.
+        // We check it is > 0 and not the tiny default-font ascent (~9 pt for a 12pt fallback).
+        let textLineAscent = lines[1].ascent
+        #expect(textLineAscent > 15, "text line ascent (\(textLineAscent)) should reflect fontSize 24, not a default-font fallback")
     }
 
     @Test("monospace run uses different font metrics than proportional")

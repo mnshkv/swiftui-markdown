@@ -13,7 +13,10 @@ public struct LineFrame {
     public var descent: CGFloat
     /// The underlying CoreText line.
     public var ctLine: CTLine
-    /// Character range within the paragraph's flat string.
+    /// UTF-16 code-unit range within the paragraph's flattened attributed string,
+    /// matching the offsets produced by `CTTypesetterSuggestLineBreak` / `CFRange`.
+    /// Wave 2's position-index space must be built in UTF-16 units to align with these values.
+    /// Do NOT interpret these as Swift `Character` (extended grapheme cluster) indices.
     public var charRange: Range<Int>
 
     public init(origin: CGPoint, size: CGSize, ascent: CGFloat, descent: CGFloat,

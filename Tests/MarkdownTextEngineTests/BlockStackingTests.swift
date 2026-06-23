@@ -27,9 +27,11 @@ struct BlockStackingTests {
         #expect(rect2.origin.y >= expectedMinY)
     }
 
-    @Test("contentSize.height covers both blocks")
-    func contentSizeCoversAllBlocks() {
+    @Test("contentSize.height equals last block maxY (no trailing spacingAfter gap)")
+    func contentSizeEqualsLastBlockMaxY() {
         let s = TextStyle(fontSize: 14, color: .black)
+        // ParagraphStyle.body has spacingAfter = 8. The contentSize.height must be
+        // rect2.maxY exactly — it must NOT include the trailing 8pt spacingAfter.
         let p1 = Paragraph(runs: [.text("First paragraph.", s)], style: .body)
         let p2 = Paragraph(runs: [.text("Second paragraph.", s)], style: .body)
         let doc = TextDocument(blocks: [.paragraph(p1), .paragraph(p2)])
@@ -38,7 +40,8 @@ struct BlockStackingTests {
         guard case .text(let rect2, _) = layout.blocks[1] else {
             Issue.record("second block is not .text"); return
         }
-        #expect(layout.contentSize.height >= rect2.maxY)
+        // Exact equality: no trailing inter-block gap must be appended to contentSize.
+        #expect(layout.contentSize.height == rect2.maxY)
     }
 
     @Test("three blocks: monotonically increasing minY")

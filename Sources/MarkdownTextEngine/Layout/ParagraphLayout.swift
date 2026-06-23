@@ -17,17 +17,24 @@ func ctFont(for style: TextStyle) -> CTFont {
 // MARK: - Attributed string builder
 
 /// Converts `InlineRun` tree into a `CFMutableAttributedString`.
-/// Returns the string and a parallel array of (range, style) for each text segment.
+/// Every character — including line-break characters — carries explicit font and color
+/// attributes so CoreText never falls back to a default system font.
 func buildAttributedString(from runs: [InlineRun]) -> CFMutableAttributedString {
     let attrStr = CFAttributedStringCreateMutable(nil, 0)!
-    appendRuns(runs, into: attrStr)
+    var lastStyle = _defaultBreakStyle
+    appendRuns(runs, into: attrStr, lastStyle: &lastStyle)
     return attrStr
 }
 
-private func appendRuns(_ runs: [InlineRun], into attrStr: CFMutableAttributedString) {
+/// Default style used when a `.lineBreak` run appears before any `.text` run.
+private let _defaultBreakStyle = TextStyle(fontSize: 17, color: CGColor(gray: 0, alpha: 1))
+
+private func appendRuns(_ runs: [InlineRun], into attrStr: CFMutableAttributedString,
+                        lastStyle: inout TextStyle) {
     for run in runs {
         switch run {
         case .text(let string, let style):
+            lastStyle = style
             let font = ctFont(for: style)
             let attrs: [CFString: Any] = [
                 kCTFontAttributeName: font,
@@ -40,16 +47,27 @@ private func appendRuns(_ runs: [InlineRun], into attrStr: CFMutableAttributedSt
                                             attrs as CFDictionary, false)
 
         case .link(let innerRuns, _):
-            appendRuns(innerRuns, into: attrStr)
+            appendRuns(innerRuns, into: attrStr, lastStyle: &lastStyle)
 
         case .inlineImage:
             // Placeholder: images not rendered in this wave
             break
 
         case .lineBreak(let hard):
+            // Apply the most recent text style (or the default if no text seen yet)
+            // so CoreText does not fall back to a system default font for the break glyph.
             let breakChar = hard ? "\n" : "\u{2028}" // LINE SEPARATOR for soft break
+            let style = lastStyle
+            let font = ctFont(for: style)
+            let attrs: [CFString: Any] = [
+                kCTFontAttributeName: font,
+                kCTForegroundColorAttributeName: style.color
+            ]
             let len = CFAttributedStringGetLength(attrStr)
             CFAttributedStringReplaceString(attrStr, CFRangeMake(len, 0), breakChar as CFString)
+            let newLen = CFAttributedStringGetLength(attrStr)
+            CFAttributedStringSetAttributes(attrStr, CFRangeMake(len, newLen - len),
+                                            attrs as CFDictionary, false)
         }
     }
 }
@@ -112,6 +130,8 @@ public enum LayoutEngine {
     public static func layout(_ doc: TextDocument, width: CGFloat) -> DocumentLayout {
         var blockFrames: [BlockFrame] = []
         var cursorY: CGFloat = 0
+        // Tracks the maxY of the most recently appended block rect (no trailing gap).
+        var contentHeight: CGFloat = 0
 
         for block in doc.blocks {
             switch block {
@@ -122,6 +142,7 @@ public enum LayoutEngine {
                 blockFrames.append(frame)
                 if case .text(let rect, _) = frame {
                     cursorY = rect.maxY
+                    contentHeight = rect.maxY
                 }
                 cursorY += p.style.spacingAfter
 
@@ -130,12 +151,14 @@ public enum LayoutEngine {
                 let rect = CGRect(x: 0, y: cursorY, width: width, height: ruleHeight)
                 blockFrames.append(.rule(rect))
                 cursorY += ruleHeight
+                contentHeight = cursorY
 
             case .image(let attachment):
                 let imgSize = attachment.intrinsicSize
                 let rect = CGRect(x: 0, y: cursorY, width: imgSize.width, height: imgSize.height)
                 blockFrames.append(.image(rect: rect, attachment: attachment))
                 cursorY += imgSize.height
+                contentHeight = cursorY
 
             case .codeBlock:
                 // Placeholder – code blocks handled in a later wave
@@ -161,7 +184,8 @@ public enum LayoutEngine {
 
         return DocumentLayout(
             blocks: blockFrames,
-            contentSize: CGSize(width: width, height: cursorY)
+            // contentSize.height is the maxY of the last block rect — no trailing inter-block gap.
+            contentSize: CGSize(width: width, height: contentHeight)
         )
     }
 }
