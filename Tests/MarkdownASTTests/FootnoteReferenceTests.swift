@@ -8,7 +8,7 @@ struct FootnoteReferenceTests {
         let doc = MarkdownParser.parse("Text[^1]\n\n[^1]: note")
         #expect(doc.blocks == [.paragraph(content: [.text("Text"), .footnoteReference(id: "1")])])
         #expect(doc.footnotes == [
-            FootnoteDefinition(id: "1", blocks: [.paragraph(content: [.text("note")])]),
+            FootnoteDefinition(id: "1", blocks: [.paragraph(content: [.text("note")])])
         ])
     }
 

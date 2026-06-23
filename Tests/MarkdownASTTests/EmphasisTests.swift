@@ -25,7 +25,7 @@ struct EmphasisTests {
     @Test("strong nested in emphasis: `*a **b** c*`")
     func strongInsideEmphasis() {
         #expect(inlines("*a **b** c*") == [
-            .emphasis([.text("a "), .strong([.text("b")]), .text(" c")]),
+            .emphasis([.text("a "), .strong([.text("b")]), .text(" c")])
         ])
     }
 
@@ -47,7 +47,7 @@ struct EmphasisTests {
     @Test("emphasis containing strong runs: `*a**b**c*`")
     func emphasisWithInnerStrong() {
         #expect(inlines("*a**b**c*") == [
-            .emphasis([.text("a"), .strong([.text("b")]), .text("c")]),
+            .emphasis([.text("a"), .strong([.text("b")]), .text("c")])
         ])
     }
 }

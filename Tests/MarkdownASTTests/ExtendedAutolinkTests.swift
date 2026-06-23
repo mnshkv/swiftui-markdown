@@ -10,21 +10,21 @@ struct ExtendedAutolinkTests {
     @Test("bare https URL between text")
     func bareURL() {
         #expect(inlines("see https://swift.org now") == [
-            .text("see "), .autolink(url: "https://swift.org"), .text(" now"),
+            .text("see "), .autolink(url: "https://swift.org"), .text(" now")
         ])
     }
 
     @Test("www. URL with a trailing sentence dot")
     func wwwTrailingDot() {
         #expect(inlines("at www.swift.org.") == [
-            .text("at "), .autolink(url: "www.swift.org"), .text("."),
+            .text("at "), .autolink(url: "www.swift.org"), .text(".")
         ])
     }
 
     @Test("trailing unmatched paren is not part of the URL")
     func balancedParen() {
         #expect(inlines("(https://a.com)") == [
-            .text("("), .autolink(url: "https://a.com"), .text(")"),
+            .text("("), .autolink(url: "https://a.com"), .text(")")
         ])
     }
 
@@ -41,7 +41,7 @@ struct ExtendedAutolinkTests {
     @Test("bare email")
     func bareEmail() {
         #expect(inlines("contact a@b.com now") == [
-            .text("contact "), .autolink(url: "a@b.com"), .text(" now"),
+            .text("contact "), .autolink(url: "a@b.com"), .text(" now")
         ])
     }
 }

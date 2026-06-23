@@ -91,7 +91,7 @@ func processEmphasis(_ tokens: [InlineToken]) -> [MarkdownInline] {
             continue
         }
         let obKey = "\(cchar)\(ccanOpen)\(corig % 3)"
-        let floor: EmphNode? = openersBottom[obKey] ?? nil
+        let floor: EmphNode? = openersBottom[obKey].flatMap { $0 } // flatten EmphNode?? -> EmphNode?
 
         var opener = cur.prev
         var matched: EmphNode?

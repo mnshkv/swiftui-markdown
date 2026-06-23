@@ -24,7 +24,7 @@ func conformanceActual(_ markdown: String) -> String {
 let outOfScopeSections: Set<String> = [
     "HTML blocks",
     "Raw HTML",
-    "Entity and numeric character references",
+    "Entity and numeric character references"
 ]
 
 /// In-scope spec examples not yet conformant in v1 (subtle rendering/edge cases
@@ -35,7 +35,7 @@ let inScopeKnownFails: Set<Int> = [
     198, 201, 202, 206, 208, 217, 226, 236, 237, 249, 278, 280, 281, 283, 284,
     307, 308, 309, 315, 318, 319, 344, 346, 475, 476, 477, 489, 491, 492, 494,
     499, 502, 503, 504, 506, 507, 518, 519, 520, 524, 526, 532, 533, 536, 538,
-    540, 541, 546, 603, 606, 608, 609, 611, 612, 633, 635, 636, 638, 642, 643,
+    540, 541, 546, 603, 606, 608, 609, 611, 612, 633, 635, 636, 638, 642, 643
 ]
 
 @Suite("CommonMark conformance")

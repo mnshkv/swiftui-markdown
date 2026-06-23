@@ -42,7 +42,7 @@ struct ReferenceLinkTests {
     @Test("code span in link text is opaque to bracket matching")
     func codeSpanInText() {
         #expect(inlines("[a`b]c`][r]") == [
-            .link(destination: "/u", title: nil, content: [.text("a"), .code("b]c")]),
+            .link(destination: "/u", title: nil, content: [.text("a"), .code("b]c")])
         ])
     }
 }

@@ -21,7 +21,7 @@ struct ImageTests {
     func linkThenTextCoalesces() {
         #expect(inlines("[a](x)!") == [
             .link(destination: "x", title: nil, content: [.text("a")]),
-            .text("!"),
+            .text("!")
         ])
     }
 
@@ -29,7 +29,7 @@ struct ImageTests {
     func twoAdjacentLinks() {
         #expect(inlines("[a](x)[b](y)") == [
             .link(destination: "x", title: nil, content: [.text("a")]),
-            .link(destination: "y", title: nil, content: [.text("b")]),
+            .link(destination: "y", title: nil, content: [.text("b")])
         ])
     }
 }

@@ -49,6 +49,7 @@ opt_in_rules:
   - contains_over_first_not_nil
   - last_where
   - sorted_first_last
-  - redundant_nil_coalescing
+  # redundant_nil_coalescing is intentionally NOT enabled: its autocorrect
+  # destructively strips a load-bearing `?? nil` that flattens a double optional.
   - toggle_bool
   - unused_import

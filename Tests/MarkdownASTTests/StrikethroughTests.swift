@@ -25,7 +25,7 @@ struct StrikethroughTests {
     @Test("strikethrough wraps inner emphasis")
     func strikethroughWithEmphasis() {
         #expect(inlines("~~a *b* c~~") == [
-            .strikethrough([.text("a "), .emphasis([.text("b")]), .text(" c")]),
+            .strikethrough([.text("a "), .emphasis([.text("b")]), .text(" c")])
         ])
     }
 }

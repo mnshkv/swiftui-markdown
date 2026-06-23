@@ -32,7 +32,7 @@ struct AutolinkTests {
         #expect(inlines("see <https://x.org> now") == [
             .text("see "),
             .autolink(url: "https://x.org"),
-            .text(" now"),
+            .text(" now")
         ])
     }
 }
