@@ -66,7 +66,6 @@ public final class TextEngineView: UIView {
         addGestureRecognizer(longPress)
 
         let pan = UIPanGestureRecognizer(target: self, action: #selector(handlePan(_:)))
-        pan.require(toFail: longPress) // pan only activates after long press ends or alongside it
         addGestureRecognizer(pan)
     }
 
@@ -124,7 +123,7 @@ public final class TextEngineView: UIView {
 
     public override func draw(_ rect: CGRect) {
         guard let ctx = UIGraphicsGetCurrentContext() else { return }
-        DocumentRenderer.draw(docLayout, in: ctx, visible: rect, selection: currentSelectionRects)
+        DocumentRenderer.draw(docLayout, in: ctx, canvasHeight: bounds.height, visible: rect, selection: currentSelectionRects)
     }
 }
 
@@ -241,12 +240,13 @@ public final class TextEngineView: NSView {
     public override func draw(_ dirtyRect: NSRect) {
         guard let ctx = NSGraphicsContext.current?.cgContext else { return }
         // On AppKit, NSView draws with y-up (bottom-left origin) by default.
-        // DocumentRenderer's draw() applies the y-flip internally using visible.maxY
-        // as the canvas height; we pass the dirty rect so the renderer culls
-        // off-screen blocks correctly.
+        // DocumentRenderer's draw() applies the y-flip internally using
+        // canvasHeight (the full bounds height), not the dirty rect height.
+        // We pass dirtyRect as `visible` so the renderer culls off-screen
+        // blocks correctly.
         let visibleRect = CGRect(origin: dirtyRect.origin,
                                  size: CGSize(width: dirtyRect.width, height: dirtyRect.height))
-        DocumentRenderer.draw(docLayout, in: ctx, visible: visibleRect, selection: currentSelectionRects)
+        DocumentRenderer.draw(docLayout, in: ctx, canvasHeight: bounds.height, visible: visibleRect, selection: currentSelectionRects)
     }
 }
 #endif

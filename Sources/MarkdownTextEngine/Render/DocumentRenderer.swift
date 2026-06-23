@@ -28,20 +28,23 @@ public enum DocumentRenderer {
     /// Draws `layout` into `ctx`.
     ///
     /// - Parameters:
-    ///   - layout:    The fully computed document layout.
-    ///   - ctx:       A Core Graphics context whose coordinate system has its
-    ///                **origin at the bottom-left** (standard CG convention).
-    ///                The context's height must be passed implicitly via the
-    ///                `visible` rect; the renderer uses `visible.maxY` as the
-    ///                canvas height for the y-flip.
-    ///   - visible:   The rectangle (in document / view coordinates, y-down) that
-    ///                is currently on screen.  Blocks that do not intersect this
-    ///                rectangle are skipped.
-    ///   - selection: An array of rects (document coordinates) to fill with the
-    ///                selection highlight color, drawn *behind* text.
+    ///   - layout:       The fully computed document layout.
+    ///   - ctx:          A Core Graphics context whose coordinate system has its
+    ///                   **origin at the bottom-left** (standard CG convention).
+    ///   - canvasHeight: The full height of the drawing surface (view's
+    ///                   `bounds.height`).  Used exclusively for the y-flip
+    ///                   transform so that document-space coordinates map
+    ///                   correctly onto the CG canvas regardless of scroll
+    ///                   position.
+    ///   - visible:      The rectangle (in document / view coordinates, y-down)
+    ///                   that is currently on screen.  Used ONLY for culling:
+    ///                   blocks that do not intersect this rectangle are skipped.
+    ///   - selection:    An array of rects (document coordinates) to fill with
+    ///                   the selection highlight color, drawn *behind* text.
     public static func draw(
         _ layout: DocumentLayout,
         in ctx: CGContext,
+        canvasHeight: CGFloat,
         visible: CGRect,
         selection: [CGRect]
     ) {
@@ -58,11 +61,11 @@ public enum DocumentRenderer {
         // We transform the context so that (0,0) in document space maps to the
         // top-left corner, with y increasing downward.
         //
-        // The canvas height we use is visible.maxY; this is the total height
-        // of the drawing surface visible in this draw call.  For a windowed
-        // draw pass, visible.maxY == viewBounds.maxY.
+        // We use canvasHeight (the full view bounds height) for the flip, NOT
+        // visible.maxY.  In a scrolled view the dirty rect has a non-zero
+        // origin and is shorter than the view, so using visible.maxY would
+        // mis-place glyphs.  visible is used only for culling below.
         // ------------------------------------------------------------------
-        let canvasHeight = visible.maxY
         ctx.translateBy(x: 0, y: canvasHeight)
         ctx.scaleBy(x: 1, y: -1)
 
