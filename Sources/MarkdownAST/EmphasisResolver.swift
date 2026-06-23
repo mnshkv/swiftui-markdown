@@ -86,7 +86,7 @@ func processEmphasis(_ tokens: [InlineToken]) -> [MarkdownInline] {
     var closer = head
     while let cur = closer {
         guard case .delim(let cchar, let ccount, let corig, let ccanOpen, let ccanClose) = cur.kind,
-              ccanClose, cchar == "*" || cchar == "_" else {
+              ccanClose, cchar == "*" || cchar == "_" || cchar == "~" else {
             closer = cur.next
             continue
         }
@@ -96,11 +96,16 @@ func processEmphasis(_ tokens: [InlineToken]) -> [MarkdownInline] {
         var opener = cur.prev
         var matched: EmphNode?
         while let op = opener, op !== floor {
-            if case .delim(let ochar, _, let oorig, let ocanOpen, _) = op.kind, ocanOpen, ochar == cchar {
-                let oddMatch = (ccanOpen || isCanClose(op))
-                    && (corig + oorig) % 3 == 0
-                    && !(corig % 3 == 0 && oorig % 3 == 0)
-                if !oddMatch { matched = op; break }
+            if case .delim(let ochar, let ocount, let oorig, let ocanOpen, _) = op.kind, ocanOpen, ochar == cchar {
+                if cchar == "~" {
+                    // GFM strikethrough: pair only exact length-2 runs (v1).
+                    if ccount == 2, ocount == 2 { matched = op; break }
+                } else {
+                    let oddMatch = (ccanOpen || isCanClose(op))
+                        && (corig + oorig) % 3 == 0
+                        && !(corig % 3 == 0 && oorig % 3 == 0)
+                    if !oddMatch { matched = op; break }
+                }
             }
             opener = op.prev
         }
@@ -113,8 +118,9 @@ func processEmphasis(_ tokens: [InlineToken]) -> [MarkdownInline] {
             continue
         }
 
-        let strong = ocount >= 2 && ccount >= 2
-        let use = strong ? 2 : 1
+        let strike = cchar == "~"
+        let strong = !strike && ocount >= 2 && ccount >= 2
+        let use = strike || strong ? 2 : 1
 
         var inner: [MarkdownInline] = []
         var between = op.next
@@ -122,7 +128,8 @@ func processEmphasis(_ tokens: [InlineToken]) -> [MarkdownInline] {
             inner.append(contentsOf: emphNodeInlines(node))
             between = node.next
         }
-        let wrapped = EmphNode(.inline(strong ? .strong(inner) : .emphasis(inner)))
+        let wrappedInline: MarkdownInline = strike ? .strikethrough(inner) : (strong ? .strong(inner) : .emphasis(inner))
+        let wrapped = EmphNode(.inline(wrappedInline))
         op.next = wrapped; wrapped.prev = op
         wrapped.next = cur; cur.prev = wrapped
 
