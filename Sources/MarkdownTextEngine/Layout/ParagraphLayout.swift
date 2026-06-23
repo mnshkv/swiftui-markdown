@@ -8,10 +8,15 @@ func ctFont(for style: TextStyle) -> CTFont {
     if style.isBold { traits.insert(.traitBold) }
     if style.isItalic { traits.insert(.traitItalic) }
     if style.isMonospace { traits.insert(.traitMonoSpace) }
-    let base = style.isMonospace
-        ? CTFontCreateWithName("Menlo" as CFString, style.fontSize, nil)
-        : CTFontCreateUIFontForLanguage(.system, style.fontSize, nil)!
-    return CTFontCreateCopyWithSymbolicTraits(base, style.fontSize, nil, traits, traits) ?? base
+    // Clamp to 1pt minimum — CTFontCreateUIFontForLanguage returns nil for zero/negative sizes,
+    // which would crash the force-unwrap. A caller-supplied fontSize of 0 or negative is treated
+    // as 1pt so layout remains usable rather than crashing.
+    let size = max(style.fontSize, 1)
+    let base: CTFont = style.isMonospace
+        ? CTFontCreateWithName("Menlo" as CFString, size, nil)
+        : CTFontCreateUIFontForLanguage(.system, size, nil)
+            ?? CTFontCreateWithName("Helvetica" as CFString, size, nil)
+    return CTFontCreateCopyWithSymbolicTraits(base, size, nil, traits, traits) ?? base
 }
 
 // MARK: - Attributed string builder
