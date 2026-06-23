@@ -68,6 +68,34 @@ public extension MarkdownRenderer {
     }
 }
 
+// MARK: - Task 5.2: LinkAction + resolveLink
+
+/// The action to take when a link token is activated.
+public enum LinkAction: Equatable {
+    case url(URL)
+    case footnote(String)
+    case ignore
+}
+
+public extension MarkdownRenderer {
+
+    /// Resolves a link token string into a `LinkAction`.
+    ///
+    /// - Tokens starting with `"footnote:"` become `.footnote(id)`.
+    /// - All other non-empty tokens are parsed by `URL(string:)`:
+    ///   valid URL → `.url`; nil or empty → `.ignore`.
+    static func resolveLink(_ token: String) -> LinkAction {
+        let footnotePrefix = "footnote:"
+        if token.hasPrefix(footnotePrefix) {
+            return .footnote(String(token.dropFirst(footnotePrefix.count)))
+        }
+        guard !token.isEmpty, let url = URL(string: token) else {
+            return .ignore
+        }
+        return .url(url)
+    }
+}
+
 // MARK: - Private helpers
 
 private func indentBlock(_ block: Block, by amount: CGFloat) -> Block {
