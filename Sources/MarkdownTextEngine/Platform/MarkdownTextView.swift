@@ -182,9 +182,8 @@ private struct _TextEngineRepresentable: UIViewRepresentable {
             guard let view, let onLink else { return }
             let pt = gesture.location(in: view)
             let layout = view.docLayout
-            // Use the module-level position(at:in:doc:) from HitTesting.swift
-            let pos = hitTestPosition(at: pt, in: layout, doc: view.document)
-            if let payload = linkPayload(at: pos, in: view.document) {
+            // Delegate entirely to the pure linkRange helper in LinkHitTesting.swift.
+            if let payload = linkRange(at: pt, layout: layout, doc: view.document)?.payload {
                 onLink(payload)
             }
         }
@@ -248,9 +247,8 @@ private struct _TextEngineRepresentable: NSViewRepresentable {
             let ptInView = gesture.location(in: view)
             let docPt = CGPoint(x: ptInView.x, y: view.bounds.height - ptInView.y)
             let layout = view.docLayout
-            // Use the module-level position(at:in:doc:) from HitTesting.swift
-            let pos = hitTestPosition(at: docPt, in: layout, doc: view.document)
-            if let payload = linkPayload(at: pos, in: view.document) {
+            // Delegate entirely to the pure linkRange helper in LinkHitTesting.swift.
+            if let payload = linkRange(at: docPt, layout: layout, doc: view.document)?.payload {
                 onLink(payload)
             }
         }
@@ -259,82 +257,7 @@ private struct _TextEngineRepresentable: NSViewRepresentable {
 
 #endif
 
-// MARK: - Forwarding wrapper for position(at:in:doc:)
-//
-// The global function `position(at:in:doc:)` from HitTesting.swift would
-// shadow NSGestureRecognizer.location(in:) and UIGestureRecognizer methods
-// in coordinator scope. We wrap it with an unambiguous name.
-
-private func hitTestPosition(at point: CGPoint, in layout: DocumentLayout, doc: TextDocument) -> TextPosition {
-    position(at: point, in: layout, doc: doc)
-}
-
-// MARK: - Link hit-test helper
-
-/// Returns the `LinkPayload` at the given text `position` in `doc`, if any.
-///
-/// Walks the block at the position's block index and inspects the inline run
-/// under the character offset to find a `.link` run.
-private func linkPayload(at pos: TextPosition, in doc: TextDocument) -> LinkPayload? {
-    // Use the flattened text bases to find which block and offset within it.
-    let bases = utf16Bases(for: doc)
-    let flat = flattenedText(doc)
-    let total = flat.utf16.count
-    let idx = max(0, min(pos.index, total))
-
-    // Find the block that contains this position
-    var blockIndex: Int? = nil
-    for (i, base) in bases.enumerated() {
-        let nextBase = (i + 1 < bases.count) ? bases[i + 1] : total + 1
-        if idx >= base && idx < nextBase {
-            blockIndex = i
-            break
-        }
-    }
-    guard let bi = blockIndex else { return nil }
-    let block = doc.blocks[bi]
-    guard case .paragraph(let para) = block else { return nil }
-
-    let localOffset = idx - bases[bi]
-    return linkPayloadInRuns(at: localOffset, in: para.runs)
-}
-
-/// Recursively searches `runs` for a `.link` run that covers `offset`
-/// (a UTF-16 offset within the paragraph's flattened text).
-private func linkPayloadInRuns(at offset: Int, in runs: [InlineRun]) -> LinkPayload? {
-    var cursor = 0
-    for run in runs {
-        switch run {
-        case .text(let s, _):
-            let len = s.utf16.count
-            if offset >= cursor && offset < cursor + len { return nil }
-            cursor += len
-
-        case .link(let innerRuns, let payload):
-            let innerText = innerRuns.map { inlineRunText($0) }.joined()
-            let len = innerText.utf16.count
-            if offset >= cursor && offset < cursor + len {
-                return payload
-            }
-            cursor += len
-
-        case .inlineImage:
-            break
-
-        case .lineBreak(let hard):
-            let ch = hard ? "\n" : "\u{2028}"
-            cursor += ch.utf16.count
-        }
-    }
-    return nil
-}
-
-/// Returns the plain-text contribution of a single inline run.
-private func inlineRunText(_ run: InlineRun) -> String {
-    switch run {
-    case .text(let s, _): return s
-    case .link(let inner, _): return inner.map { inlineRunText($0) }.joined()
-    case .inlineImage: return ""
-    case .lineBreak(let hard): return hard ? "\n" : "\u{2028}"
-    }
-}
+// Note: link hit-testing is delegated to the pure `linkRange(at:layout:doc:)` helper
+// in Selection/LinkHitTesting.swift. The private link-walking helpers that previously
+// lived here (linkPayload, linkPayloadInRuns, inlineRunText) have been removed to
+// eliminate the duplicate implementation.
