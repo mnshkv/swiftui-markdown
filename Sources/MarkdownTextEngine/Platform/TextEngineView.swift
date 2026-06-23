@@ -324,7 +324,7 @@ public final class TextEngineView: UIView {
 // MARK: - UIEditMenuInteractionDelegate (Task 7.3, iOS 16+)
 
 @available(iOS 16, *)
-extension TextEngineView: UIEditMenuInteractionDelegate {
+extension TextEngineView: @preconcurrency UIEditMenuInteractionDelegate {
 
     public func editMenuInteraction(
         _ interaction: UIEditMenuInteraction,
