@@ -4,6 +4,34 @@
 // and an adjacent-text coalescing pass. The canonical `process_emphasis`
 // pairing algorithm is a later task (Wave 8).
 
+/// Merges consecutive `.text` nodes into one, recursing into the children of
+/// emphasis/strong/strikethrough/link (K6).
+func coalesceText(_ inlines: [MarkdownInline]) -> [MarkdownInline] {
+    var result: [MarkdownInline] = []
+    for node in inlines {
+        let coalesced = coalesceChildren(node)
+        if case .text(let next) = coalesced, case .text(let prev)? = result.last {
+            result[result.count - 1] = .text(prev + next)
+        } else {
+            result.append(coalesced)
+        }
+    }
+    return result
+}
+
+/// Recurses `coalesceText` into the inline children of container nodes.
+private func coalesceChildren(_ node: MarkdownInline) -> MarkdownInline {
+    switch node {
+    case .emphasis(let c): return .emphasis(coalesceText(c))
+    case .strong(let c): return .strong(coalesceText(c))
+    case .strikethrough(let c): return .strikethrough(coalesceText(c))
+    case .link(let destination, let title, let c):
+        return .link(destination: destination, title: title, content: coalesceText(c))
+    default:
+        return node
+    }
+}
+
 /// A token in the inline emphasis pipeline: either a resolved inline node, or a
 /// run of emphasis/strikethrough delimiters awaiting pairing (Wave 8).
 enum InlineToken: Equatable {
