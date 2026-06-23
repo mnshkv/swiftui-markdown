@@ -46,6 +46,71 @@ private func matchDelimiters(_ chars: [Character], openAt: Int, open: Character,
     return nil
 }
 
+/// Splits the inside of a link's `(...)` into destination and optional title.
+/// Handles `<dest>` (spaces allowed), a bare dest with balanced parens,
+/// `"…"`/`'…'`/`(…)` titles, and backslash escapes in both. Returns nil if
+/// malformed — an unterminated angle dest/title, a non-title token where a title
+/// is expected, or any non-whitespace left over after the title.
+func splitDestinationAndTitle(_ s: String) -> (dest: String, title: String?)? {
+    let chars = Array(s)
+    var i = 0
+    func skipWhitespace() { while i < chars.count, chars[i].isWhitespace { i += 1 } }
+
+    skipWhitespace()
+    var dest = ""
+    if i < chars.count, chars[i] == "<" {
+        i += 1
+        while i < chars.count, chars[i] != ">" {
+            if chars[i] == "\\", i + 1 < chars.count {
+                dest.append(chars[i + 1]); i += 2; continue
+            }
+            if chars[i] == "\n" || chars[i] == "<" { return nil }
+            dest.append(chars[i]); i += 1
+        }
+        guard i < chars.count, chars[i] == ">" else { return nil }
+        i += 1
+    } else {
+        var depth = 0
+        while i < chars.count {
+            let c = chars[i]
+            if c == "\\", i + 1 < chars.count { dest.append(chars[i + 1]); i += 2; continue }
+            if c.isWhitespace { break }
+            if c == "(" { depth += 1 } else if c == ")" {
+                if depth == 0 { break }
+                depth -= 1
+            }
+            dest.append(c); i += 1
+        }
+    }
+
+    skipWhitespace()
+    var title: String?
+    if i < chars.count {
+        let opener = chars[i]
+        let closer: Character
+        switch opener {
+        case "\"": closer = "\""
+        case "'": closer = "'"
+        case "(": closer = ")"
+        default: return nil // a non-title token after the destination ⇒ malformed
+        }
+        i += 1
+        var body = ""
+        var closed = false
+        while i < chars.count {
+            if chars[i] == "\\", i + 1 < chars.count { body.append(chars[i + 1]); i += 2; continue }
+            if chars[i] == closer { closed = true; i += 1; break }
+            body.append(chars[i]); i += 1
+        }
+        guard closed else { return nil }
+        title = body
+    }
+
+    skipWhitespace()
+    guard i >= chars.count else { return nil } // leftover junk
+    return (dest, title)
+}
+
 /// Index of a closing backtick run of exactly `n` backticks at or after `start`
 /// (runs of other lengths are content), or nil.
 func closingBacktickRun(_ chars: [Character], from start: Int, length n: Int) -> Int? {
