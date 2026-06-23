@@ -58,7 +58,7 @@ public func flattenedText(_ doc: TextDocument) -> String {
 
 // MARK: - Private helpers
 
-private func textForBlock(_ block: Block) -> String {
+func textForBlock(_ block: Block) -> String {
     switch block {
     case .paragraph(let p):
         return textForRuns(p.runs)
@@ -67,7 +67,7 @@ private func textForBlock(_ block: Block) -> String {
     }
 }
 
-private func textForRuns(_ runs: [InlineRun]) -> String {
+func textForRuns(_ runs: [InlineRun]) -> String {
     var result = ""
     for run in runs {
         switch run {

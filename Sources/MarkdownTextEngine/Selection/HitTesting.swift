@@ -117,28 +117,9 @@ func utf16Bases(for doc: TextDocument) -> [Int] {
 }
 
 /// Returns the UTF-16 length of the text contributed by a single block.
+///
+/// Delegates to `textForBlock` so there is a single source of truth for
+/// inline-run flattening: `blockUTF16Length(b) == textForBlock(b).utf16.count`.
 func blockUTF16Length(_ block: Block) -> Int {
-    switch block {
-    case .paragraph(let p):
-        return runsUTF16Length(p.runs)
-    case .list, .quote, .table, .codeBlock, .image, .thematicBreak:
-        return 0
-    }
-}
-
-private func runsUTF16Length(_ runs: [InlineRun]) -> Int {
-    var total = 0
-    for run in runs {
-        switch run {
-        case .text(let s, _):
-            total += s.utf16.count
-        case .link(let innerRuns, _):
-            total += runsUTF16Length(innerRuns)
-        case .inlineImage:
-            break
-        case .lineBreak:
-            total += 1  // "\n" or "\u{2028}" — both are 1 UTF-16 unit
-        }
-    }
-    return total
+    textForBlock(block).utf16.count
 }

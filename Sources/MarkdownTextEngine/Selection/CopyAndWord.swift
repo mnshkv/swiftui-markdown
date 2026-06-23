@@ -17,7 +17,7 @@ public func copyText(for range: TextRange, doc: TextDocument) -> String {
 
     let startIdx = utf16.index(utf16.startIndex, offsetBy: start)
     let endIdx = utf16.index(utf16.startIndex, offsetBy: end)
-    return String(utf16[startIdx..<endIdx])!
+    return String(utf16[startIdx..<endIdx]) ?? ""
 }
 
 // MARK: - Word range
@@ -40,8 +40,11 @@ public func wordRange(at position: TextPosition, doc: TextDocument) -> TextRange
 
     // Convert UTF-16 offset to String.Index
     let targetUTF16Idx = utf16.index(utf16.startIndex, offsetBy: clampedIndex)
-    // Convert to Character-level index for enumerateSubstrings
-    let targetIdx = targetUTF16Idx.samePosition(in: flat) ?? flat.unicodeScalars.index(flat.unicodeScalars.startIndex, offsetBy: 0).samePosition(in: flat)!
+    // Convert to Character-level index for enumerateSubstrings.
+    // If the UTF-16 index lands mid-surrogate-pair, samePosition returns nil —
+    // return a zero-length range at the clamped position rather than silently
+    // falling back to position 0 and returning the wrong word.
+    guard let targetIdx = targetUTF16Idx.samePosition(in: flat) else { return zeroLength }
 
     var result: TextRange? = nil
     flat.enumerateSubstrings(in: flat.startIndex..., options: .byWords) { _, substringRange, _, stop in

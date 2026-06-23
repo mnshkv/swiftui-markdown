@@ -120,4 +120,31 @@ struct CopyAndWordTests {
         let range = wordRange(at: pos, doc: d)
         #expect(range.start.index == range.end.index)
     }
+
+    // MARK: Mid-surrogate-pair robustness (findings 1 & 2)
+
+    /// "a😀b" — the emoji is U+1F600, encoded as 2 UTF-16 units (a surrogate pair).
+    /// UTF-16 layout: index 0 = 'a', index 1 = high surrogate, index 2 = low surrogate, index 3 = 'b'.
+    /// Index 2 lands inside the surrogate pair.
+
+    @Test("copyText over mid-surrogate range does not crash and returns a String")
+    func copyTextMidSurrogateSafe() {
+        let d = doc("a😀b")
+        // Range [1, 2] — high surrogate only; String(utf16[...]) returns nil → should return ""
+        let range = TextRange(start: TextPosition(index: 1), end: TextPosition(index: 2))
+        // Must not crash; result is "" or whatever String can form from a lone surrogate
+        let result = copyText(for: range, doc: d)
+        // The only requirement is no crash and the result is a String
+        _ = result
+    }
+
+    @Test("wordRange at mid-surrogate index returns zero-length range and does not crash")
+    func wordRangeMidSurrogateSafe() {
+        let d = doc("a😀b")
+        // Index 2 = low surrogate of 😀 — lands mid-surrogate-pair
+        let pos = TextPosition(index: 2)
+        let range = wordRange(at: pos, doc: d)
+        // Must not crash; must return a zero-length range
+        #expect(range.start.index == range.end.index)
+    }
 }
