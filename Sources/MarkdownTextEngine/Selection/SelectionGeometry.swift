@@ -239,8 +239,22 @@ public func selectionRects(for range: TextRange, in layout: DocumentLayout, doc:
                 }
             }
 
-        case .rule, .image:
+        case .rule:
             continue
+
+        case .image(let rect, _):
+            // BLOCK IMAGE ATOMIC SELECTION:
+            // The block contributes `alt.utf16.count` UTF-16 units (see textForBlock(.image)).
+            // If the selection range overlaps the image's span, the entire image rect is
+            // returned as a single selection rect (atomic: selecting any part highlights all).
+            let imageLen = blockUTF16Length(doc.blocks[blockIndex])
+            let imageStart = blockBase
+            let imageEnd = blockBase + imageLen
+            // Only contribute a rect if the image has content (alt is non-empty) and
+            // the selection touches it.
+            if imageLen > 0 && range.start.index < imageEnd && range.end.index > imageStart {
+                result.append(rect)
+            }
         }
     }
 

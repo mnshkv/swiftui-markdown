@@ -97,7 +97,15 @@ func textForBlock(_ block: Block) -> String {
         // frame using the SAME order and separator.
         return cb.lines.joined(separator: "\n")
 
-    case .image, .thematicBreak:
+    case .image(let attachment):
+        // INDEX SPACE CONTRACT: a block image occupies `alt.utf16.count` UTF-16 units
+        // in the flattened text space. `selectionRects` maps the entire alt span to the
+        // image rect atomically, and `copyText` returns the alt string.
+        // If alt is empty, the image still occupies 0 units (i.e. the "\n" separator
+        // between adjacent blocks is the only contribution of that block position).
+        return attachment.alt
+
+    case .thematicBreak:
         return ""
     }
 }
