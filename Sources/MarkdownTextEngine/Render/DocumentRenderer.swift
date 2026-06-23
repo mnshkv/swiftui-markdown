@@ -82,29 +82,97 @@ public enum DocumentRenderer {
         }
 
         // ------------------------------------------------------------------
-        // 2. Draw text blocks
+        // 2. Draw blocks (text, list markers, quote bars, and nested layouts)
         // ------------------------------------------------------------------
-        for block in layout.blocks {
-            guard case .text(let blockRect, let lines) = block else { continue }
-            // Skip blocks entirely outside the visible rect
-            guard blockRect.intersects(visible) else { continue }
-
-            for line in lines {
-                // Skip individual lines outside the visible rect
-                let lineRect = CGRect(origin: line.origin, size: line.size)
-                guard lineRect.intersects(visible) else { continue }
-
-                // The baseline in document (y-down) space is:
-                //   line.origin.y + line.ascent
-                // After the flip, the CG y coordinate is:
-                //   line.origin.y + line.ascent  (same value — the transform handles it)
-                let baseline = CGPoint(x: line.origin.x, y: line.origin.y + line.ascent)
-                ctx.textMatrix = .identity
-                ctx.textPosition = baseline
-                CTLineDraw(line.ctLine, ctx)
-            }
-        }
+        drawBlocks(layout.blocks, in: ctx, visible: visible)
 
         ctx.restoreGState()
+    }
+
+    // MARK: - Private drawing helpers
+
+    /// Draws all blocks in `blocks`, handling text, lists, and quotes recursively.
+    private static func drawBlocks(_ blocks: [BlockFrame], in ctx: CGContext, visible: CGRect) {
+        for block in blocks {
+            switch block {
+            case .text(let blockRect, let lines):
+                guard blockRect.intersects(visible) else { continue }
+                drawTextLines(lines, in: ctx, visible: visible)
+
+            case .list(let listRect, let itemLayouts, let markerFrames, let markerStrings):
+                guard listRect.intersects(visible) else { continue }
+                // Draw markers
+                for (i, markerRect) in markerFrames.enumerated() {
+                    guard i < markerStrings.count else { continue }
+                    guard markerRect.intersects(visible) else { continue }
+                    drawMarker(markerStrings[i], frame: markerRect, in: ctx)
+                }
+                // Recurse into each item's layout
+                for itemLayout in itemLayouts {
+                    drawBlocks(itemLayout.blocks, in: ctx, visible: visible)
+                }
+
+            case .quote(let quoteRect, let innerLayout, let barRect):
+                guard quoteRect.intersects(visible) else { continue }
+                // Draw the quote bar
+                if barRect.intersects(visible) {
+                    ctx.setFillColor(red: 0.6, green: 0.6, blue: 0.6, alpha: 1.0)
+                    ctx.fill(barRect)
+                }
+                // Recurse into inner layout
+                drawBlocks(innerLayout.blocks, in: ctx, visible: visible)
+
+            case .rule(let rect):
+                guard rect.intersects(visible) else { continue }
+                // Draw thematic break as a thin horizontal line
+                ctx.setFillColor(red: 0.6, green: 0.6, blue: 0.6, alpha: 1.0)
+                ctx.fill(rect)
+
+            case .image, .table, .code:
+                // Not drawn in this wave
+                break
+            }
+        }
+    }
+
+    /// Draws CoreText lines from a `.text` block.
+    private static func drawTextLines(_ lines: [LineFrame], in ctx: CGContext, visible: CGRect) {
+        for line in lines {
+            let lineRect = CGRect(origin: line.origin, size: line.size)
+            guard lineRect.intersects(visible) else { continue }
+
+            // Baseline in document (y-down) space: origin.y + ascent.
+            // The flip transform applied by the caller converts this to CG space correctly.
+            let baseline = CGPoint(x: line.origin.x, y: line.origin.y + line.ascent)
+            ctx.textMatrix = .identity
+            ctx.textPosition = baseline
+            CTLineDraw(line.ctLine, ctx)
+        }
+    }
+
+    /// Draws a single list marker string at the given frame position.
+    private static func drawMarker(_ text: String, frame: CGRect, in ctx: CGContext) {
+        // Build a minimal CTLine for the marker using the same default style as layout.
+        let markerStyle = TextStyle(fontSize: 17, color: CGColor(gray: 0, alpha: 1))
+        let markerFont = ctFont(for: markerStyle)
+        let attrs: [CFString: Any] = [
+            kCTFontAttributeName: markerFont,
+            kCTForegroundColorAttributeName: markerStyle.color
+        ]
+        guard let attrStr = CFAttributedStringCreate(nil, text as CFString, attrs as CFDictionary) else { return }
+        let typesetter = CTTypesetterCreateWithAttributedString(attrStr)
+        let charCount = CFAttributedStringGetLength(attrStr)
+        let ctLine = CTTypesetterCreateLine(typesetter, CFRangeMake(0, charCount))
+
+        // Baseline: frame.origin.y + ascent (approximate — frame was built from the same ascent).
+        var ascent: CGFloat = 0
+        var descent: CGFloat = 0
+        var leading: CGFloat = 0
+        _ = CTLineGetTypographicBounds(ctLine, &ascent, &descent, &leading)
+
+        let baseline = CGPoint(x: frame.origin.x, y: frame.origin.y + ascent)
+        ctx.textMatrix = .identity
+        ctx.textPosition = baseline
+        CTLineDraw(ctLine, ctx)
     }
 }

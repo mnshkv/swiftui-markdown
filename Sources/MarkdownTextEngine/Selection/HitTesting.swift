@@ -6,64 +6,76 @@ import CoreGraphics
 /// Returns the `TextPosition` in the document's flattened UTF-16 index space
 /// that corresponds to the given point in the document's coordinate space.
 ///
-/// - If `point.y` is above all text blocks, returns position 0.
+/// - If `point.y` is above all text blocks (including nested), returns position 0.
 /// - If `point.y` is below all text blocks, returns the end position.
-/// - For non-text (rule, image, list, …) blocks: they are skipped for y-containment
-///   but their UTF-16 base contribution (always 0 length + 1 separator) is still counted.
+/// - For non-text (rule, image, …) blocks: they are skipped for y-containment
+///   but their UTF-16 base contribution is still counted.
+///
+/// CONSISTENCY CONTRACT: when recursing into list-item layouts and quote inner layouts,
+/// the UTF-16 base offsets are computed using the same separator ("\n") and item order
+/// as `textForBlock` / `flattenedText`. See `selectionRects` for the parallel implementation.
 public func position(at point: CGPoint, in layout: DocumentLayout, doc: TextDocument) -> TextPosition {
-    // 1. Compute per-block UTF-16 bases
-    let bases = utf16Bases(for: doc)
+    // Collect all "leaf text segments" in document order: each is a (globalUTF16Base, lines) pair.
+    // We recurse into list items and quotes, computing absolute UTF-16 bases as we go.
     let flattened = flattenedText(doc)
     let totalUTF16 = flattened.utf16.count
 
-    // 2. Collect text blocks with their indices
-    let textBlocks: [(blockIndex: Int, rect: CGRect, lines: [LineFrame])] = layout.blocks.enumerated().compactMap {
-        if case .text(let rect, let lines) = $0.element {
-            return ($0.offset, rect, lines)
-        }
-        return nil
-    }
+    // Collect leaf segments
+    var segments: [(utf16Base: Int, lines: [LineFrame])] = []
+    collectTextSegments(
+        blocks: layout.blocks,
+        docBlocks: doc.blocks,
+        utf16Bases: utf16Bases(for: doc),
+        into: &segments
+    )
 
-    guard !textBlocks.isEmpty else {
+    guard !segments.isEmpty else {
         return TextPosition(index: 0)
     }
 
-    // 3. Find which text block the point falls into (y-based).
-    // Track whether we snapped to the first or last block for edge-case handling.
+    // 2. Find which segment the point falls into (y-based)
     enum BlockSnap { case exact, snapFirst, snapLast }
-    let targetBlock: (blockIndex: Int, rect: CGRect, lines: [LineFrame])
+    let targetSegment: (utf16Base: Int, lines: [LineFrame])
     let blockSnap: BlockSnap
-    if let found = textBlocks.first(where: { $0.rect.minY <= point.y && point.y < $0.rect.maxY }) {
-        targetBlock = found
+
+    if let found = segments.first(where: { seg in
+        guard let first = seg.lines.first, let last = seg.lines.last else { return false }
+        let top = first.origin.y
+        let bottom = last.origin.y + last.size.height
+        return top <= point.y && point.y < bottom
+    }) {
+        targetSegment = found
         blockSnap = .exact
-    } else if point.y < textBlocks[0].rect.minY {
-        // Above all text → snap to first text block start
-        targetBlock = textBlocks[0]
+    } else if point.y < (segments[0].lines.first?.origin.y ?? 0) {
+        targetSegment = segments[0]
         blockSnap = .snapFirst
     } else {
-        // Below all text → snap to last text block end
-        targetBlock = textBlocks[textBlocks.count - 1]
+        targetSegment = segments[segments.count - 1]
         blockSnap = .snapLast
     }
 
-    let blockBase = bases[targetBlock.blockIndex]
-    let lines = targetBlock.lines
+    let blockBase = targetSegment.utf16Base
+    let lines = targetSegment.lines
 
     guard !lines.isEmpty else {
         return TextPosition(index: blockBase)
     }
 
-    // 4. Find the line within the block, with snap direction awareness.
+    // 3. Handle snap to document edges
+    if blockSnap == .snapFirst {
+        return TextPosition(index: 0)
+    } else if blockSnap == .snapLast {
+        return TextPosition(index: totalUTF16)
+    }
+
+    // 4. Find the line within the segment
     enum LineSnap { case exact, snapFirst, snapLast }
     let targetLine: LineFrame
     let lineSnap: LineSnap
-    if blockSnap == .snapFirst {
-        // Point is above the entire document → position 0
-        return TextPosition(index: 0)
-    } else if blockSnap == .snapLast {
-        // Point is below the entire document → end position
-        return TextPosition(index: totalUTF16)
-    } else if let found = lines.first(where: { $0.origin.y <= point.y && point.y < $0.origin.y + $0.size.height }) {
+
+    if let found = lines.first(where: {
+        $0.origin.y <= point.y && point.y < $0.origin.y + $0.size.height
+    }) {
         targetLine = found
         lineSnap = .exact
     } else if point.y < lines[0].origin.y {
@@ -74,7 +86,6 @@ public func position(at point: CGPoint, in layout: DocumentLayout, doc: TextDocu
         lineSnap = .snapLast
     }
 
-    // 5. If we snapped to the start of the first line, return line start; for last line snap, return line end.
     if lineSnap == .snapFirst {
         let globalIndex = blockBase + targetLine.charRange.lowerBound
         return TextPosition(index: max(0, min(globalIndex, totalUTF16)))
@@ -83,17 +94,13 @@ public func position(at point: CGPoint, in layout: DocumentLayout, doc: TextDocu
         return TextPosition(index: max(0, min(globalIndex, totalUTF16)))
     }
 
-    // 6. Use CTLine to get local UTF-16 index within the paragraph's attributed string.
+    // 5. Use CTLine to get local UTF-16 index within the paragraph's attributed string
     let localX = point.x - targetLine.origin.x
     let localPoint = CGPoint(x: localX, y: 0)
     let localIndex = CTLineGetStringIndexForPosition(targetLine.ctLine, localPoint)
 
-    // localIndex is already the UTF-16 offset within the paragraph's attributed string.
     let globalIndex = blockBase + localIndex
-
-    // 7. Clamp
-    let clamped = max(0, min(globalIndex, totalUTF16))
-    return TextPosition(index: clamped)
+    return TextPosition(index: max(0, min(globalIndex, totalUTF16)))
 }
 
 // MARK: - UTF-16 base computation
@@ -122,4 +129,79 @@ func utf16Bases(for doc: TextDocument) -> [Int] {
 /// inline-run flattening: `blockUTF16Length(b) == textForBlock(b).utf16.count`.
 func blockUTF16Length(_ block: Block) -> Int {
     textForBlock(block).utf16.count
+}
+
+// MARK: - Recursive text segment collection
+
+/// Collects all leaf text segments (`.text` blocks) from the layout tree,
+/// computing their absolute UTF-16 bases in the same order as `textForBlock`.
+///
+/// CONSISTENCY CONTRACT:
+/// - For `.list` blocks: items are visited in order; between items there is a
+///   1-unit "\n" separator — matching `textForBlock(.list)`.
+/// - For `.quote` blocks: the inner document is recursed with `utf16Bases(for: innerDoc)` —
+///   matching `textForBlock(.quote)` which returns `flattenedText(innerDoc)`.
+private func collectTextSegments(
+    blocks: [BlockFrame],
+    docBlocks: [Block],
+    utf16Bases bases: [Int],
+    into result: inout [(utf16Base: Int, lines: [LineFrame])]
+) {
+    for (blockIndex, blockFrame) in blocks.enumerated() {
+        guard blockIndex < bases.count else { continue }
+        let blockBase = bases[blockIndex]
+
+        switch blockFrame {
+        case .text(_, let lines):
+            if !lines.isEmpty {
+                result.append((utf16Base: blockBase, lines: lines))
+            }
+
+        case .list(_, let itemLayouts, _, _):
+            guard blockIndex < docBlocks.count,
+                  case .list(let listBlock) = docBlocks[blockIndex] else { continue }
+
+            // CONSISTENCY CONTRACT: same order and separator as textForBlock(.list).
+            var itemCursor = blockBase
+            for (i, itemLayout) in itemLayouts.enumerated() {
+                guard i < listBlock.items.count else { break }
+                let itemDoc = listBlock.items[i]
+                let itemText = flattenedText(itemDoc)
+                let itemLen = itemText.utf16.count
+                let itemBases = utf16Bases(for: itemDoc)
+
+                // Build shifted bases for this item (absolute in the document)
+                let shiftedBases = itemBases.map { itemCursor + $0 }
+                collectTextSegments(
+                    blocks: itemLayout.blocks,
+                    docBlocks: itemDoc.blocks,
+                    utf16Bases: shiftedBases,
+                    into: &result
+                )
+
+                itemCursor += itemLen
+                if i < itemLayouts.count - 1 {
+                    itemCursor += 1  // separator "\n"
+                }
+            }
+
+        case .quote(_, let innerLayout, _):
+            guard blockIndex < docBlocks.count,
+                  case .quote(let innerDoc) = docBlocks[blockIndex] else { continue }
+
+            // CONSISTENCY CONTRACT: quote text == flattenedText(innerDoc).
+            // Shift inner document bases by blockBase.
+            let innerBases = utf16Bases(for: innerDoc)
+            let shiftedBases = innerBases.map { blockBase + $0 }
+            collectTextSegments(
+                blocks: innerLayout.blocks,
+                docBlocks: innerDoc.blocks,
+                utf16Bases: shiftedBases,
+                into: &result
+            )
+
+        case .rule, .image, .table, .code:
+            continue
+        }
+    }
 }

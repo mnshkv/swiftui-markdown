@@ -7,6 +7,12 @@ import CoreGraphics
 ///
 /// Only `.text` block frames contribute rects. Rects are in the document's coordinate space.
 /// An empty (zero-length) range returns an empty array.
+///
+/// CONSISTENCY CONTRACT: this function recurses into `.list` and `.quote` blocks using the
+/// same text-flattening order as `textForBlock` / `flattenedText`. Specifically:
+/// - For `.list`: items are visited in order; between items there is a 1-unit "\n" separator.
+/// - For `.quote`: the inner document is visited with its own `flattenedText` — which is
+///   itself built from `textForBlock` with inter-block "\n" separators.
 public func selectionRects(for range: TextRange, in layout: DocumentLayout, doc: TextDocument) -> [CGRect] {
     guard range.start.index < range.end.index else { return [] }
 
@@ -14,61 +20,97 @@ public func selectionRects(for range: TextRange, in layout: DocumentLayout, doc:
     var result: [CGRect] = []
 
     for (blockIndex, blockFrame) in layout.blocks.enumerated() {
-        guard case .text(_, let lines) = blockFrame else { continue }
         guard blockIndex < bases.count else { continue }
-
         let blockBase = bases[blockIndex]
-        // Length of this block in UTF-16 units
-        let blockLen: Int
-        if blockIndex + 1 < bases.count {
-            // Next base minus separator
-            let nextBase = bases[blockIndex + 1]
-            // The separator between blocks is 1 UTF-16 unit,
-            // so blockLen = nextBase - blockBase - 1
-            blockLen = max(0, nextBase - blockBase - 1)
-        } else {
-            // Last block — compute directly
-            let flattened = flattenedText(doc)
-            blockLen = flattened.utf16.count - blockBase
-        }
 
-        // Does the range overlap this block?
-        let blockStart = blockBase
-        let blockEnd = blockBase + blockLen
-        if range.end.index <= blockStart || range.start.index >= blockEnd { continue }
+        switch blockFrame {
+        case .text(_, let lines):
+            let blockLen = blockUTF16Length(doc.blocks[blockIndex])
+            let blockStart = blockBase
+            let blockEnd = blockBase + blockLen
+            if range.end.index <= blockStart || range.start.index >= blockEnd { continue }
 
-        // Walk lines within this block
-        for line in lines {
-            // Absolute UTF-16 range of this line within the document
-            let lineGlobalStart = blockBase + line.charRange.lowerBound
-            let lineGlobalEnd = blockBase + line.charRange.upperBound
+            for line in lines {
+                let lineGlobalStart = blockBase + line.charRange.lowerBound
+                let lineGlobalEnd = blockBase + line.charRange.upperBound
+                if range.end.index <= lineGlobalStart || range.start.index >= lineGlobalEnd { continue }
 
-            // Does the selection range overlap this line?
-            if range.end.index <= lineGlobalStart || range.start.index >= lineGlobalEnd { continue }
+                let selStart = max(range.start.index, lineGlobalStart)
+                let selEnd = min(range.end.index, lineGlobalEnd)
+                let localStart = selStart - blockBase
+                let localEnd = selEnd - blockBase
 
-            // Clamp selection to this line's range
-            let selStart = max(range.start.index, lineGlobalStart)
-            let selEnd = min(range.end.index, lineGlobalEnd)
+                let startX = CTLineGetOffsetForStringIndex(line.ctLine, localStart, nil)
+                let endX = CTLineGetOffsetForStringIndex(line.ctLine, localEnd, nil)
+                let minX = min(startX, endX)
+                let width = abs(endX - startX)
+                guard width > 0 else { continue }
 
-            // Convert to local (within paragraph attributed string) indices
-            let localStart = selStart - blockBase
-            let localEnd = selEnd - blockBase
+                result.append(CGRect(
+                    x: line.origin.x + minX,
+                    y: line.origin.y,
+                    width: width,
+                    height: line.size.height
+                ))
+            }
 
-            // Get x-offsets from CoreText
-            let startX = CTLineGetOffsetForStringIndex(line.ctLine, localStart, nil)
-            let endX = CTLineGetOffsetForStringIndex(line.ctLine, localEnd, nil)
+        case .list(_, let itemLayouts, _, _):
+            guard case .list(let listBlock) = doc.blocks[blockIndex] else { continue }
+            let listLen = blockUTF16Length(doc.blocks[blockIndex])
+            let listStart = blockBase
+            let listEnd = blockBase + listLen
+            if range.end.index <= listStart || range.start.index >= listEnd { continue }
 
-            let minX = min(startX, endX)
-            let width = abs(endX - startX)
-            guard width > 0 else { continue }
+            // Walk items: each item's text is flattenedText(item), joined by "\n".
+            // CONSISTENCY CONTRACT: same order and separator as textForBlock(.list).
+            var itemCursor = blockBase
+            for (i, itemLayout) in itemLayouts.enumerated() {
+                guard i < listBlock.items.count else { break }
+                let itemDoc = listBlock.items[i]
+                let itemText = flattenedText(itemDoc)
+                let itemLen = itemText.utf16.count
+                let itemStart = itemCursor
+                let itemEnd = itemCursor + itemLen
 
-            let rect = CGRect(
-                x: line.origin.x + minX,
-                y: line.origin.y,
-                width: width,
-                height: line.size.height
+                if range.start.index < itemEnd && range.end.index > itemStart {
+                    // Clamp range into this item's sub-space
+                    let clampedRange = TextRange(
+                        start: TextPosition(index: max(range.start.index, itemStart)),
+                        end: TextPosition(index: min(range.end.index, itemEnd))
+                    )
+                    // Build a shifted range: subtract itemStart to get local offsets within this item
+                    let localRange = TextRange(
+                        start: TextPosition(index: clampedRange.start.index - itemStart),
+                        end: TextPosition(index: clampedRange.end.index - itemStart)
+                    )
+                    result += selectionRects(for: localRange, in: itemLayout, doc: itemDoc)
+                }
+
+                // Advance past this item and the "\n" separator (if not last)
+                itemCursor += itemLen
+                if i < itemLayouts.count - 1 {
+                    itemCursor += 1  // separator "\n"
+                }
+            }
+
+        case .quote(_, let innerLayout, _):
+            guard case .quote(let innerDoc) = doc.blocks[blockIndex] else { continue }
+            let quoteLen = blockUTF16Length(doc.blocks[blockIndex])
+            let quoteStart = blockBase
+            let quoteEnd = blockBase + quoteLen
+            if range.end.index <= quoteStart || range.start.index >= quoteEnd { continue }
+
+            // Clamp range into the inner document's text space.
+            // CONSISTENCY CONTRACT: quote text = flattenedText(innerDoc), so offset
+            // from quoteStart directly maps into the inner document's UTF-16 space.
+            let localRange = TextRange(
+                start: TextPosition(index: max(range.start.index, quoteStart) - quoteStart),
+                end: TextPosition(index: min(range.end.index, quoteEnd) - quoteStart)
             )
-            result.append(rect)
+            result += selectionRects(for: localRange, in: innerLayout, doc: innerDoc)
+
+        case .rule, .image, .table, .code:
+            continue
         }
     }
 

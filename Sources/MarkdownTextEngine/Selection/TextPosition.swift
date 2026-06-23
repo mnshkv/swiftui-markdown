@@ -62,7 +62,17 @@ func textForBlock(_ block: Block) -> String {
     switch block {
     case .paragraph(let p):
         return textForRuns(p.runs)
-    case .list, .quote, .table, .codeBlock, .image, .thematicBreak:
+    case .list(let list):
+        // Concatenate all items' flattened text, joined by "\n" between items.
+        // CONSISTENCY CONTRACT: every geometry helper that walks list item layouts
+        // must use the same separator ("\n") and the same item order.
+        return list.items.map { flattenedText($0) }.joined(separator: "\n")
+    case .quote(let innerDoc):
+        // The quote contributes its inner document's flattened text.
+        // CONSISTENCY CONTRACT: geometry helpers recurse into `inner` DocumentLayout
+        // using the same flattened text as produced by flattenedText(innerDoc).
+        return flattenedText(innerDoc)
+    case .table, .codeBlock, .image, .thematicBreak:
         return ""
     }
 }

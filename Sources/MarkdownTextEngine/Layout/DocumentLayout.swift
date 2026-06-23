@@ -32,8 +32,17 @@ public enum BlockFrame {
     case text(rect: CGRect, lines: [LineFrame])
     case rule(CGRect)
     case image(rect: CGRect, attachment: ImageAttachment)
-    case list(rect: CGRect, items: [[BlockFrame]])
-    case quote(rect: CGRect, inner: [BlockFrame])
+    /// A laid-out list block.
+    /// - `itemLayouts`: one `DocumentLayout` per list item (recursive layout in item-indent space).
+    /// - `markerFrames`: one `CGRect` per item — the bounding box of the marker glyph.
+    /// - `markerStrings`: the marker label string for each item (e.g. "•" or "3.").
+    /// - `rect`: bounding rect of the entire list block in document space.
+    case list(rect: CGRect, itemLayouts: [DocumentLayout], markerFrames: [CGRect], markerStrings: [String])
+    /// A laid-out block-quote.
+    /// - `inner`: the recursive layout of the quoted document.
+    /// - `barRect`: the thin left-edge bar rect (document space).
+    /// - `rect`: bounding rect of the entire quote block.
+    case quote(rect: CGRect, inner: DocumentLayout, barRect: CGRect)
     case table(rect: CGRect)
     case code(rect: CGRect)
 }
