@@ -16,10 +16,18 @@ enum BlockMapper {
                     style: ctx.headingParagraph()
                 )))
             case .paragraph(let content):
-                blocks.append(.paragraph(Paragraph(
-                    runs: InlineMapper.map(content, base: ctx.body, ctx: ctx, footnotes: footnotes),
-                    style: ctx.bodyParagraph
-                )))
+                if let lone = loneImage(content) {
+                    blocks.append(.image(ImageAttachment(
+                        source: lone.source,
+                        intrinsicSize: ctx.style.blockImage,
+                        alt: lone.alt
+                    )))
+                } else {
+                    blocks.append(.paragraph(Paragraph(
+                        runs: InlineMapper.map(content, base: ctx.body, ctx: ctx, footnotes: footnotes),
+                        style: ctx.bodyParagraph
+                    )))
+                }
             case .blockQuote(let inner):
                 blocks.append(.quote(TextDocument(blocks: map(inner, ctx: ctx, footnotes: footnotes))))
             case .codeBlock(let lang, let code):
@@ -101,6 +109,26 @@ enum BlockMapper {
         guard case .paragraph(var p) = block else { return block }
         p.style.leadingIndent += amount
         return .paragraph(p)
+    }
+
+    /// Returns `(source, alt)` if `content` contains exactly one `.image` and all
+    /// other nodes are whitespace-only `.text` or `.softBreak`. Returns `nil` otherwise.
+    private static func loneImage(_ content: [MarkdownInline]) -> (source: String, alt: String)? {
+        var found: (source: String, alt: String)?
+        for node in content {
+            switch node {
+            case .image(let src, _, let alt):
+                if found != nil { return nil }  // more than one image
+                found = (src, alt)
+            case .text(let s) where s.allSatisfy(\.isWhitespace):
+                break  // whitespace-only text is ignored
+            case .softBreak:
+                break
+            default:
+                return nil  // non-whitespace content → not a lone image
+            }
+        }
+        return found
     }
 
     private static func mapAlignment(_ alignment: MarkdownTable.Alignment) -> TextAlignment {

@@ -153,4 +153,53 @@ struct SpecialFeaturesTests {
             #expect(p.style.leadingIndent == indent)
         }
     }
+
+    // MARK: - Task 4.2: lone-image block promotion
+
+    @Test("paragraph with lone image → block .image")
+    func loneImagePromotion() {
+        let blocks = map([.paragraph(content: [.image(source: "i", title: nil, alt: "a")])])
+        guard case .image(let att) = blocks.first else {
+            Issue.record("Expected block .image"); return
+        }
+        #expect(att.source == "i")
+        #expect(att.alt == "a")
+        let expectedSize = StyleContext(.default, .light).style.blockImage
+        #expect(att.intrinsicSize == expectedSize)
+    }
+
+    @Test("paragraph with image + non-whitespace text → stays .paragraph (inline image)")
+    func mixedParagraphStaysInline() {
+        let blocks = map([.paragraph(content: [.text("see "), .image(source: "i", title: nil, alt: "a")])])
+        guard case .paragraph(_) = blocks.first else {
+            Issue.record("Expected .paragraph (not promoted)"); return
+        }
+    }
+
+    @Test("paragraph with whitespace around image → promoted to block .image")
+    func whitespaceAroundImagePromoted() {
+        let blocks = map([.paragraph(content: [
+            .text("  "),
+            .image(source: "img", title: nil, alt: "alt"),
+            .text(" ")
+        ])])
+        guard case .image(let att) = blocks.first else {
+            Issue.record("Expected block .image"); return
+        }
+        #expect(att.source == "img")
+        #expect(att.alt == "alt")
+    }
+
+    @Test("paragraph with softBreak around image → promoted to block .image")
+    func softBreakAroundImagePromoted() {
+        let blocks = map([.paragraph(content: [
+            .softBreak,
+            .image(source: "s", title: nil, alt: "b"),
+            .softBreak
+        ])])
+        guard case .image(let att) = blocks.first else {
+            Issue.record("Expected block .image"); return
+        }
+        #expect(att.source == "s")
+    }
 }
