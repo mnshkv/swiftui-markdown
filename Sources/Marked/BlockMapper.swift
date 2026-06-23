@@ -54,17 +54,54 @@ enum BlockMapper {
                     }
                 }()
                 let items = list.items.map { item in
-                    TextDocument(blocks: map(item.blocks, ctx: ctx, footnotes: footnotes))
+                    var itemBlocks = map(item.blocks, ctx: ctx, footnotes: footnotes)
+                    if let task = item.task {
+                        itemBlocks = prependCheckbox(task, to: itemBlocks, ctx: ctx)
+                    }
+                    return TextDocument(blocks: itemBlocks)
                 }
                 blocks.append(.list(List(marker: marker, isTight: list.isTight, items: items)))
-            default:
-                break
+            case .definitionList(let defs):
+                for d in defs {
+                    var termStyle = ctx.body
+                    termStyle.isBold = true
+                    blocks.append(.paragraph(Paragraph(
+                        runs: InlineMapper.map(d.term, base: termStyle, ctx: ctx, footnotes: footnotes),
+                        style: ctx.bodyParagraph
+                    )))
+                    for detail in d.details {
+                        for b in map(detail, ctx: ctx, footnotes: footnotes) {
+                            blocks.append(indent(b, by: ctx.style.spacing.definitionIndent))
+                        }
+                    }
+                }
             }
         }
         return blocks
     }
 
     // MARK: - Private helpers
+
+    private static func prependCheckbox(_ task: TaskState, to itemBlocks: [Block], ctx: StyleContext) -> [Block] {
+        let glyph = task == .checked ? "☑ " : "☐ "
+        let checkboxRun = InlineRun.text(glyph, ctx.body)
+        var result = itemBlocks
+        if let idx = result.firstIndex(where: { if case .paragraph = $0 { return true }; return false }) {
+            guard case .paragraph(var p) = result[idx] else { return result }
+            p.runs.insert(checkboxRun, at: 0)
+            result[idx] = .paragraph(p)
+        } else {
+            let p = Paragraph(runs: [checkboxRun], style: ctx.bodyParagraph)
+            result.insert(.paragraph(p), at: 0)
+        }
+        return result
+    }
+
+    private static func indent(_ block: Block, by amount: CGFloat) -> Block {
+        guard case .paragraph(var p) = block else { return block }
+        p.style.leadingIndent += amount
+        return .paragraph(p)
+    }
 
     private static func mapAlignment(_ alignment: MarkdownTable.Alignment) -> TextAlignment {
         switch alignment {
