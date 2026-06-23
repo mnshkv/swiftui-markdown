@@ -49,7 +49,7 @@ private func appendRuns(_ runs: [InlineRun], into attrStr: CFMutableAttributedSt
             CFAttributedStringReplaceString(attrStr, CFRangeMake(len, 0), string as CFString)
             let newLen = CFAttributedStringGetLength(attrStr)
             CFAttributedStringSetAttributes(attrStr, CFRangeMake(len, newLen - len),
-                                            attrs as CFDictionary, false)
+                                            attrs as CFDictionary, true)
 
         case .link(let innerRuns, _):
             appendRuns(innerRuns, into: attrStr, lastStyle: &lastStyle)
@@ -120,11 +120,16 @@ private func appendRuns(_ runs: [InlineRun], into attrStr: CFMutableAttributedSt
                 kCTFontAttributeName: font,
                 kCTForegroundColorAttributeName: lastStyle.color
             ]
+            // clearOtherAttributes = true: the run delegate must apply to ONLY the
+            // placeholder. Text inserted afterwards inherits the preceding char's
+            // attributes, so every text/break run uses clearOtherAttributes = true to
+            // drop any inherited delegate — otherwise CoreText would size the following
+            // glyphs to the image width.
             CFAttributedStringSetAttributes(
                 attrStr,
                 CFRangeMake(insertPos, placeholderLen),
                 imgAttrs as CFDictionary,
-                false
+                true
             )
 
         case .lineBreak(let hard):
@@ -141,7 +146,7 @@ private func appendRuns(_ runs: [InlineRun], into attrStr: CFMutableAttributedSt
             CFAttributedStringReplaceString(attrStr, CFRangeMake(len, 0), breakChar as CFString)
             let newLen = CFAttributedStringGetLength(attrStr)
             CFAttributedStringSetAttributes(attrStr, CFRangeMake(len, newLen - len),
-                                            attrs as CFDictionary, false)
+                                            attrs as CFDictionary, true)
         }
     }
 }
