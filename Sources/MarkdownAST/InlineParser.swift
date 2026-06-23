@@ -65,19 +65,17 @@ struct InlineParser {
                     continue
                 }
             }
-            if c == "[" {
-                if i + 1 < chars.count, chars[i + 1] == "^",
-                   let (id, end) = scanFootnoteRef(chars, from: i), defs.hasFootnote(id) {
+            if c == "[", i + 1 < chars.count, chars[i + 1] == "^",
+               let (id, end) = scanFootnoteRef(chars, from: i), defs.hasFootnote(id) {
+                flushText()
+                tokens.append(.literal(.footnoteReference(id: id)))
+                i = end
+                continue
+            }
+            if c == "!" || c == "[" {
+                if let (node, end) = parseReferenceLinkOrImage(chars, from: i) {
                     flushText()
-                    tokens.append(.literal(.footnoteReference(id: id)))
-                    i = end
-                    continue
-                }
-                if let (linkText, label, end) = scanReferenceLink(chars, from: i),
-                   let def = defs.link(for: label) {
-                    flushText()
-                    tokens.append(.literal(.link(destination: def.destination, title: def.title,
-                                                 content: parse(linkText, depth: depth + 1))))
+                    tokens.append(.literal(node))
                     i = end
                     continue
                 }
@@ -189,27 +187,36 @@ struct InlineParser {
         return (id, j + 1)
     }
 
-    /// Scans a full reference link `[text][label]` at `chars[start]` (`[`),
-    /// returning the link text, label, and index past the final `]`, or nil.
-    private func scanReferenceLink(_ chars: [Character], from start: Int) -> (String, String, Int)? {
-        var j = start + 1
-        var text = ""
-        while j < chars.count, chars[j] != "]" {
-            if chars[j] == "[" { return nil }
-            text.append(chars[j])
-            j += 1
+    /// Parses a reference link/image at `chars[start]`: full `[text][label]`,
+    /// collapsed `[text][]`, or shortcut `[text]` (and the `![...]` image forms),
+    /// resolved against `defs`. Uses `matchBracket` so escapes and code spans in
+    /// the text are honored. Returns nil if the label does not resolve.
+    func parseReferenceLinkOrImage(_ chars: [Character], from start: Int) -> (MarkdownInline, Int)? {
+        var i = start
+        let isImage = chars[i] == "!"
+        if isImage {
+            guard i + 1 < chars.count, chars[i + 1] == "[" else { return nil }
+            i += 1
         }
-        guard j < chars.count else { return nil }
-        j += 1 // past first `]`
-        guard j < chars.count, chars[j] == "[" else { return nil }
-        j += 1
-        var label = ""
-        while j < chars.count, chars[j] != "]" {
-            if chars[j] == "[" { return nil }
-            label.append(chars[j])
-            j += 1
+        guard i < chars.count, chars[i] == "[" else { return nil }
+        let textOpen = i
+        guard let textClose = matchBracket(chars, openAt: textOpen) else { return nil }
+        let interior = String(chars[(textOpen + 1)..<textClose])
+
+        var label = interior // shortcut form
+        var end = textClose + 1
+        if textClose + 1 < chars.count, chars[textClose + 1] == "[" {
+            let labelOpen = textClose + 1
+            guard let labelClose = matchBracket(chars, openAt: labelOpen) else { return nil }
+            let labelInterior = String(chars[(labelOpen + 1)..<labelClose])
+            label = labelInterior.isEmpty ? interior : labelInterior // collapsed reuses the text
+            end = labelClose + 1
         }
-        guard j < chars.count else { return nil }
-        return (text, label, j + 1)
+        guard let def = defs.link(for: label) else { return nil }
+        if isImage {
+            return (.image(source: def.destination, title: def.title,
+                           alt: inlinesToPlainText(parse(interior, depth: 0))), end)
+        }
+        return (.link(destination: def.destination, title: def.title, content: parse(interior, depth: 0)), end)
     }
 }
