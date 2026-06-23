@@ -291,4 +291,91 @@ struct TableCodeRendererTests {
         DocumentRenderer.draw(layout, in: ctx, canvasHeight: CGFloat(h), visible: visible, selection: [])
         // Just verify it ran without crashing — no assertion on content needed
     }
+
+    // ------------------------------------------------------------------
+    // 5.4-H: Top border is dark at exactly row rowYs[0] (coordinate-precise)
+    //
+    // This test verifies the draw order fix: the header background fill must
+    // NOT overwrite the top grid border line. With the old (broken) draw order
+    // (borders first, then header fill), the header rect covers the top border
+    // with the header's light grey color and this test would fail because the
+    // pixel at the top border row would be light (header fill), not dark.
+    // ------------------------------------------------------------------
+    @Test("top border row has dark ink and first inter-column divider has dark ink")
+    func topBorderAndColumnDividerAreVisible() {
+        let w = 400; let h = 200
+        guard let (ctx, buffer) = makeWhiteContext(width: w, height: h) else {
+            Issue.record("Could not create CGContext"); return
+        }
+        defer { buffer.deallocate() }
+
+        let t = Table(
+            alignments: [.leading, .leading],
+            header: [cellRuns("Col A"), cellRuns("Col B")],
+            rows: [[cellRuns("val1"), cellRuns("val2")]],
+            cellStyle: textStyle()
+        )
+        let doc = TextDocument(blocks: [.table(t)])
+        let layout = LayoutEngine.layout(doc, width: CGFloat(w))
+
+        guard case .table(let tableRect, let columnX, let rowYs, _, let borders) = layout.blocks[0] else {
+            Issue.record("expected .table block frame"); return
+        }
+        // Suppress unused-variable warning — tableRect is used below for verification.
+        _ = tableRect
+
+        let visible = CGRect(x: 0, y: 0, width: CGFloat(w), height: CGFloat(h))
+        DocumentRenderer.draw(layout, in: ctx, canvasHeight: CGFloat(h), visible: visible, selection: [])
+
+        // --- (a) Check top border row ---
+        // The top horizontal border is at rowYs[0] in doc-space (y-down).
+        // In the bitmap (row 0 == top of image == doc-space y=0), that is bitmap row = Int(rowYs[0]).
+        // The border has tableBorderThickness = 1 pt, so it occupies exactly 1 pixel row.
+        let topBorderRow = Int(rowYs[0])
+        guard topBorderRow < h else {
+            Issue.record("topBorderRow \(topBorderRow) outside canvas height \(h)"); return
+        }
+
+        // Scan across the top border row; at least one pixel must be dark
+        // (border color: ~0.4 grey → RGB ≈ 102, well under threshold 200).
+        var topBorderIsDark = false
+        for x in 0..<w {
+            let px = pixel(at: x, y: topBorderRow, width: w, buffer: buffer)
+            if px.r < 200 && px.g < 200 && px.b < 200 {
+                topBorderIsDark = true
+                break
+            }
+        }
+        #expect(topBorderIsDark, "Top border at bitmap row \(topBorderRow) (doc rowYs[0]=\(rowYs[0])) must have dark ink — if this fails the header fill is overwriting the top grid line")
+
+        // --- (b) Check first inter-column divider x ---
+        // The first vertical divider is the left edge at origin.x (x=0), and
+        // the first INTER-column line is at origin.x + columnWidths[0], i.e. columnX[1] - tableCellPaddingH.
+        // We can read it from borders: find a vertical border rect that has minX > 0.
+        // columnX[1] is the content-start of column 1; the divider is at columnX[1] - tableCellPaddingH.
+        guard columnX.count >= 2 else {
+            Issue.record("Need at least 2 columns to check inter-column divider"); return
+        }
+        // tableCellPaddingH is 8 pt, so first inter-column divider x = columnX[1] - 8
+        let interColX = Int(columnX[1] - tableCellPaddingH)
+        guard interColX > 0 && interColX < w else {
+            Issue.record("interColX \(interColX) outside canvas width \(w)"); return
+        }
+
+        // Scan down that column x within the table rows; must find a dark pixel
+        // (the vertical border line colour is the same ~0.4 grey).
+        _ = borders  // used indirectly via columnX above
+        let tableTop = Int(rowYs[0])
+        let tableBottom = min(Int(rowYs.last ?? 0) + 2, h)
+        var interColIsDark = false
+        for y in tableTop..<tableBottom {
+            let px = pixel(at: interColX, y: y, width: w, buffer: buffer)
+            if px.r < 200 && px.g < 200 && px.b < 200 {
+                interColIsDark = true
+                break
+            }
+        }
+        #expect(interColIsDark,
+                "First inter-column divider at bitmap x=\(interColX) must have dark ink within table rows \(tableTop)..<\(tableBottom)")
+    }
 }

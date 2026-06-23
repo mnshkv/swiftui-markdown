@@ -179,10 +179,12 @@ struct TableLayoutBlockTests {
         }
         let rightCell = cellLines[0][1]
         if let firstLine = rightCell.first {
-            // Right-aligned: x offset from column start should be > 0
+            // Right-aligned: x offset from column start must be strictly > 0.
+            // "Right" is narrower than its column, so trailing-alignment pushes it
+            // rightward — a zero offset would mean leading alignment, not trailing.
             let offsetFromColumnStart = firstLine.origin.x - columnX[1]
-            #expect(offsetFromColumnStart >= 0,
-                    "right-aligned cell x \(firstLine.origin.x) should be >= columnX[1] \(columnX[1])")
+            #expect(offsetFromColumnStart > 0,
+                    "right-aligned cell x \(firstLine.origin.x) should be strictly > columnX[1] \(columnX[1]); offset was \(offsetFromColumnStart)")
         }
     }
 

@@ -167,14 +167,7 @@ public enum DocumentRenderer {
         in ctx: CGContext,
         visible: CGRect
     ) {
-        // Draw border rects (thin dark lines)
-        ctx.setFillColor(red: 0.4, green: 0.4, blue: 0.4, alpha: 1.0)
-        for borderRect in borders {
-            guard borderRect.intersects(visible) else { continue }
-            ctx.fill(borderRect)
-        }
-
-        // Draw header row with a light grey background fill
+        // Draw header row background FIRST so border strokes paint on top of it.
         if rowYs.count >= 2 {
             let headerRect = CGRect(
                 x: borders.first?.minX ?? 0,
@@ -190,6 +183,13 @@ public enum DocumentRenderer {
                 ctx.setFillColor(red: 0.94, green: 0.94, blue: 0.96, alpha: 1.0)
                 ctx.fill(headerRect)
             }
+        }
+
+        // Draw border rects on top (thin dark lines, not overwritten by header fill)
+        ctx.setFillColor(red: 0.4, green: 0.4, blue: 0.4, alpha: 1.0)
+        for borderRect in borders {
+            guard borderRect.intersects(visible) else { continue }
+            ctx.fill(borderRect)
         }
 
         // Draw cell text lines

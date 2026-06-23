@@ -284,9 +284,7 @@ func layoutTable(_ t: Table, width: CGFloat, origin: CGPoint) -> BlockFrame {
     var allCellLines: [[[LineFrame]]] = []
     var cursorY = origin.y
 
-    for (rowIdx, row) in allRows.enumerated() {
-        let alignment = (rowIdx < t.alignments.count) ? .leading : TextAlignment.leading
-        _ = alignment  // alignment per row is overridden per-column below
+    for row in allRows {
         var rowMaxHeight: CGFloat = 0
         var rowCellLines: [[LineFrame]] = []
 
