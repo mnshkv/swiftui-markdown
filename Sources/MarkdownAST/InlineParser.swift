@@ -22,7 +22,8 @@ struct InlineParser {
     /// runs of ≥2 become `.delim` (with flanking). Text between delimiters is
     /// merged into one `.literal(.text(...))`; a lone `~` is literal text.
     func tokenize(_ text: String, depth: Int = 0) -> [InlineToken] {
-        let chars = Array(text)
+        var chars = Array(text)
+        while let last = chars.last, last == " " || last == "\t" { chars.removeLast() } // strip final spaces
         var tokens: [InlineToken] = []
         var buf = ""
         func flushText() {
@@ -31,6 +32,23 @@ struct InlineParser {
         var i = 0
         while i < chars.count {
             let c = chars[i]
+            // Backslash before a newline is a hard break (checked before the
+            // generic escape rule).
+            if c == "\\", i + 1 < chars.count, chars[i + 1] == "\n" {
+                flushText()
+                tokens.append(.literal(.hardBreak))
+                i += 2
+                continue
+            }
+            // A newline is a line break: hard if preceded by ≥2 spaces, else soft.
+            if c == "\n" {
+                var spaces = 0
+                while buf.last == " " { buf.removeLast(); spaces += 1 }
+                flushText()
+                tokens.append(.literal(spaces >= 2 ? .hardBreak : .softBreak))
+                i += 1
+                continue
+            }
             if c == "\\", i + 1 < chars.count, Self.escapable.contains(chars[i + 1]) {
                 buf.append(chars[i + 1])
                 i += 2
