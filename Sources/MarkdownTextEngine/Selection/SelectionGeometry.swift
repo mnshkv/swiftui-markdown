@@ -109,7 +109,137 @@ public func selectionRects(for range: TextRange, in layout: DocumentLayout, doc:
             )
             result += selectionRects(for: localRange, in: innerLayout, doc: innerDoc)
 
-        case .rule, .image, .table, .code:
+        case .table(_, _, _, let cellLines, _):
+            guard blockIndex < doc.blocks.count,
+                  case .table(let tableBlock) = doc.blocks[blockIndex] else { continue }
+
+            let tableLen = blockUTF16Length(doc.blocks[blockIndex])
+            let tableStart = blockBase
+            let tableEnd = blockBase + tableLen
+            if range.end.index <= tableStart || range.start.index >= tableEnd { continue }
+
+            // CONSISTENCY CONTRACT: matches textForBlock(.table).
+            // Row order: [header, body row 0, ...]. Cells joined by "\t", rows by "\n".
+            var allRows: [[[InlineRun]]] = [tableBlock.header]
+            allRows.append(contentsOf: tableBlock.rows)
+
+            var rowCursor = blockBase
+            for (rowIdx, row) in allRows.enumerated() {
+                let rowCellLines = rowIdx < cellLines.count ? cellLines[rowIdx] : []
+
+                var cellCursor = rowCursor
+                for (colIdx, cellRunGroup) in row.enumerated() {
+                    let cellText = textForRuns(cellRunGroup)
+                    let cellLen = cellText.utf16.count
+                    let cellStart = cellCursor
+                    let cellEnd = cellCursor + cellLen
+
+                    if range.start.index < cellEnd && range.end.index > cellStart {
+                        let colFrames = colIdx < rowCellLines.count ? rowCellLines[colIdx] : []
+                        for line in colFrames {
+                            let lineGlobalStart = cellStart + line.charRange.lowerBound
+                            let lineGlobalEnd = cellStart + line.charRange.upperBound
+                            if range.end.index <= lineGlobalStart || range.start.index >= lineGlobalEnd { continue }
+
+                            let selStart = max(range.start.index, lineGlobalStart)
+                            let selEnd = min(range.end.index, lineGlobalEnd)
+                            let localStart = selStart - cellStart
+                            let localEnd = selEnd - cellStart
+
+                            let startX = CTLineGetOffsetForStringIndex(line.ctLine, localStart, nil)
+                            let endX = CTLineGetOffsetForStringIndex(line.ctLine, localEnd, nil)
+                            let minX = min(startX, endX)
+                            let width = abs(endX - startX)
+                            guard width > 0 else { continue }
+
+                            result.append(CGRect(
+                                x: line.origin.x + minX,
+                                y: line.origin.y,
+                                width: width,
+                                height: line.size.height
+                            ))
+                        }
+                    }
+
+                    cellCursor += cellLen
+                    if colIdx < row.count - 1 {
+                        cellCursor += 1  // separator "\t"
+                    }
+                }
+
+                let rowText = row.map { textForRuns($0) }.joined(separator: "\t")
+                rowCursor += rowText.utf16.count
+                if rowIdx < allRows.count - 1 {
+                    rowCursor += 1  // separator "\n"
+                }
+            }
+
+        case .code(_, _, let codeLines, _):
+            guard blockIndex < doc.blocks.count,
+                  case .codeBlock(let cb) = doc.blocks[blockIndex] else { continue }
+
+            let codeLen = blockUTF16Length(doc.blocks[blockIndex])
+            let codeStart = blockBase
+            let codeEnd = blockBase + codeLen
+            if range.end.index <= codeStart || range.start.index >= codeEnd { continue }
+
+            // CONSISTENCY CONTRACT: matches textForBlock(.codeBlock).
+            // Source lines joined by "\n".
+            var sourceLineBases: [Int] = []
+            var lineBaseCursor = codeStart
+            for (i, srcLine) in cb.lines.enumerated() {
+                sourceLineBases.append(lineBaseCursor)
+                lineBaseCursor += srcLine.utf16.count
+                if i < cb.lines.count - 1 {
+                    lineBaseCursor += 1  // separator "\n"
+                }
+            }
+
+            // Walk code line frames in order, mapping them to source lines
+            var frameIdx = 0
+            for (srcIdx, srcLine) in cb.lines.enumerated() {
+                let srcLen = srcLine.utf16.count
+                let srcBase = sourceLineBases[srcIdx]
+
+                var framesForLine: [LineFrame] = []
+                while frameIdx < codeLines.count {
+                    let frame = codeLines[frameIdx]
+                    let localEnd = frame.charRange.upperBound
+                    if localEnd <= srcLen || (srcLen == 0 && frame.charRange.isEmpty) {
+                        framesForLine.append(frame)
+                        frameIdx += 1
+                        if localEnd >= srcLen { break }
+                    } else {
+                        break
+                    }
+                }
+
+                for line in framesForLine {
+                    let lineGlobalStart = srcBase + line.charRange.lowerBound
+                    let lineGlobalEnd = srcBase + line.charRange.upperBound
+                    if range.end.index <= lineGlobalStart || range.start.index >= lineGlobalEnd { continue }
+
+                    let selStart = max(range.start.index, lineGlobalStart)
+                    let selEnd = min(range.end.index, lineGlobalEnd)
+                    let localStart = selStart - srcBase
+                    let localEnd = selEnd - srcBase
+
+                    let startX = CTLineGetOffsetForStringIndex(line.ctLine, localStart, nil)
+                    let endX = CTLineGetOffsetForStringIndex(line.ctLine, localEnd, nil)
+                    let minX = min(startX, endX)
+                    let width = abs(endX - startX)
+                    guard width > 0 else { continue }
+
+                    result.append(CGRect(
+                        x: line.origin.x + minX,
+                        y: line.origin.y,
+                        width: width,
+                        height: line.size.height
+                    ))
+                }
+            }
+
+        case .rule, .image:
             continue
         }
     }

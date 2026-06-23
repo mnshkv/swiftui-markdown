@@ -72,7 +72,29 @@ func textForBlock(_ block: Block) -> String {
         // CONSISTENCY CONTRACT: geometry helpers recurse into `inner` DocumentLayout
         // using the same flattened text as produced by flattenedText(innerDoc).
         return flattenedText(innerDoc)
-    case .table, .codeBlock, .image, .thematicBreak:
+
+    case .table(let t):
+        // CONSISTENCY CONTRACT for tables:
+        // Rows are visited in order: [header, body row 0, body row 1, ...].
+        // Within each row, cells are joined with "\t" (tab).
+        // Rows are joined with "\n" (newline).
+        // Geometry helpers (collectTextSegments, selectionRects) MUST mirror
+        // this exact traversal order and separators.
+        var allRows: [[[InlineRun]]] = [t.header]
+        allRows.append(contentsOf: t.rows)
+        let rowTexts = allRows.map { row in
+            row.map { textForRuns($0) }.joined(separator: "\t")
+        }
+        return rowTexts.joined(separator: "\n")
+
+    case .codeBlock(let cb):
+        // CONSISTENCY CONTRACT for code blocks:
+        // Source lines are joined with "\n" (newline).
+        // Geometry helpers compute absolute UTF-16 offsets for each code-line
+        // frame using the SAME order and separator.
+        return cb.lines.joined(separator: "\n")
+
+    case .image, .thematicBreak:
         return ""
     }
 }
