@@ -43,8 +43,23 @@ public enum BlockFrame {
     /// - `barRect`: the thin left-edge bar rect (document space).
     /// - `rect`: bounding rect of the entire quote block.
     case quote(rect: CGRect, inner: DocumentLayout, barRect: CGRect)
-    case table(rect: CGRect)
-    case code(rect: CGRect)
+    /// A laid-out GFM table.
+    /// - `rect`: bounding rect of the entire table in document space.
+    /// - `columnX`: absolute x-coordinate of the left edge of each column (in document space).
+    /// - `rowYs`: absolute y-coordinates of each row boundary; count = numRows + 1.
+    ///   rowYs[i] is the top of row i; rowYs[numRows] is the bottom of the last row.
+    ///   Row 0 is the header, rows 1..N are body rows.
+    /// - `cellLines`: row-major cell layout; cellLines[row][col] is [LineFrame] for that cell.
+    /// - `borders`: grid border rects (horizontal row dividers + vertical column dividers).
+    case table(rect: CGRect, columnX: [CGFloat], rowYs: [CGFloat],
+               cellLines: [[[LineFrame]]], borders: [CGRect])
+
+    /// A laid-out fenced/indented code block.
+    /// - `rect`: bounding rect of the entire block in document space.
+    /// - `box`: the padded background box rect (slightly inset inside `rect`).
+    /// - `lines`: laid-out monospace LineFrames (one or more per source line due to wrapping).
+    /// - `languageLabel`: optional LineFrame for the language tag drawn above the box.
+    case code(rect: CGRect, box: CGRect, lines: [LineFrame], languageLabel: LineFrame?)
 }
 
 /// The complete layout result for a `TextDocument`.
