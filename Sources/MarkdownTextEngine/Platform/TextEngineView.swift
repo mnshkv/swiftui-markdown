@@ -266,6 +266,15 @@ public final class TextEngineView: UIView {
 
     public override func draw(_ rect: CGRect) {
         guard let ctx = UIGraphicsGetCurrentContext() else { return }
+        // UIKit's draw context is y-down (top-left origin). DocumentRenderer and the
+        // selection-handle drawing expect a y-up context (like AppKit's NSView) which
+        // they flip internally; without compensation the whole document renders
+        // vertically mirrored on iOS. Pre-flip to y-up so the renderer's flip yields
+        // correct output, matching macOS. (visible: rect stays in UIKit y-down view
+        // coords, which already equals document space, so culling is unaffected.)
+        ctx.saveGState()
+        ctx.translateBy(x: 0, y: bounds.height)
+        ctx.scaleBy(x: 1, y: -1)
         DocumentRenderer.draw(docLayout, in: ctx, canvasHeight: bounds.height, visible: rect,
                               selection: currentSelectionRects, pressedLinkRects: pressedLinkRects,
                               images: imageCache)
@@ -274,6 +283,7 @@ public final class TextEngineView: UIView {
             drawSelectionHandles(in: ctx, selectionRects: currentSelectionRects,
                                  canvasHeight: bounds.height)
         }
+        ctx.restoreGState()
     }
 
     // MARK: - Selection handle knobs (Task 7.2)
