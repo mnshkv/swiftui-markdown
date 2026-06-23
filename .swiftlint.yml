@@ -1,4 +1,4 @@
-# SwiftLint configuration for swiftui-markdown
+# SwiftLint configuration for swift-marked
 # Run:  swiftlint           (lint)
 #       swiftlint --fix     (autocorrect formatting rules)
 

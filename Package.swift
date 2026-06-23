@@ -1,7 +1,7 @@
 // swift-tools-version: 6.2
 import PackageDescription
 let package = Package(
-    name: "swiftui-markdown",
+    name: "swift-marked",
     platforms: [.iOS("26.0"), .macOS("14.0")],
     products: [
         .library(name: "MarkdownAST", targets: ["MarkdownAST"]),

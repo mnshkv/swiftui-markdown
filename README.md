@@ -1,4 +1,4 @@
-# swiftui-markdown
+# swift-marked
 
 A hand-written SwiftUI Markdown library, built in pure Swift with **no
 third-party dependencies**. It ships as two layers you can use independently:
@@ -12,16 +12,16 @@ third-party dependencies**. It ships as two layers you can use independently:
   / UIKit·AppKit).
 
 Built test-first (TDD): every feature is driven by a failing test, and the suite
-currently has **469 tests** across the two modules (0 lint errors).
+currently has **475 tests** across the two modules (0 lint errors).
 
 ## Installation
 
 Swift Package Manager — both products are available:
 
 ```swift
-.package(url: "https://github.com/mnshkv/swiftui-markdown.git", branch: "main")
-// .product(name: "MarkdownAST", package: "swiftui-markdown")          // parser
-// .product(name: "MarkdownTextEngine", package: "swiftui-markdown")   // text engine
+.package(url: "https://github.com/mnshkv/swift-marked.git", branch: "main")
+// .product(name: "MarkdownAST", package: "swift-marked")          // parser
+// .product(name: "MarkdownTextEngine", package: "swift-marked")   // text engine
 ```
 
 Requires Swift 6.2+. `MarkdownAST` is platform-agnostic (builds on Linux);
@@ -129,7 +129,7 @@ The library is three specs, built in dependency order:
 
 ```sh
 swift build      # build
-swift test       # run the test suite (469 tests)
+swift test       # run the test suite (475 tests)
 swiftlint        # lint (config in .swiftlint.yml)
 ```
 
