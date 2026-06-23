@@ -646,6 +646,7 @@ public enum LayoutEngine {
     /// Used internally for recursive layout of list items and block-quotes.
     /// `contentSize.height` is the height of the laid-out content (maxY - origin.y of the last block).
     static func layoutWithOrigin(_ doc: TextDocument, width: CGFloat, origin: CGPoint) -> DocumentLayout {
+        let width = max(width, 1)
         var blockFrames: [BlockFrame] = []
         var cursorY: CGFloat = origin.y
         // Tracks the maxY of the most recently appended block rect (no trailing gap).
