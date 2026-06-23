@@ -43,6 +43,12 @@ public final class TextEngineView: UIView {
     /// representable coordinator can hit-test tapped points against line frames.
     var docLayout: DocumentLayout = DocumentLayout(blocks: [], contentSize: .zero)
 
+    /// Optional image provider for async image loading.
+    /// When set, `TextEngineView` requests each image source after layout completes.
+    public var imageProvider: (any ImageProvider)? = nil {
+        didSet { imageCache = [:]; setNeedsLayout() }
+    }
+
     // MARK: - Private state
 
     private var lastLayoutWidth: CGFloat = 0
@@ -54,6 +60,17 @@ public final class TextEngineView: UIView {
     private var pressedLinkRects: [CGRect] = [] {
         didSet { setNeedsDisplay() }
     }
+
+    /// Cache of resolved CGImages keyed by source string.
+    /// Populated asynchronously by `loadImages()` after each layout.
+    private var imageCache: [String: CGImage] = [:]
+
+    /// Set of image sources currently being loaded (to avoid duplicate requests).
+    private var loadingImages: Set<String> = []
+
+    /// Set of image sources that returned `nil` from the provider (permanent failure).
+    /// Sources in this set are skipped on future layout cycles to avoid infinite retry loops.
+    private var failedImageSources: Set<String> = []
 
     // MARK: - Initialisation
 
@@ -178,10 +195,50 @@ public final class TextEngineView: UIView {
         docLayout = LayoutEngine.layout(document, width: w)
         invalidateIntrinsicContentSize()
         setNeedsDisplay()
+        // After (re)layout, kick off async image loading for any sources in the new layout.
+        loadImages()
     }
 
     public override var intrinsicContentSize: CGSize {
         docLayout.contentSize
+    }
+
+    // MARK: - Async image loading
+
+    /// Iterates all `.image` blocks in the current layout and fires async Tasks
+    /// to fetch each uncached source via `imageProvider`.
+    ///
+    /// On completion, the CGImage is stored in `imageCache` and only the image's
+    /// reserved rect is invalidated for a partial redraw.
+    private func loadImages() {
+        guard let provider = imageProvider else { return }
+        for block in docLayout.blocks {
+            guard case .image(let rect, let attachment) = block else { continue }
+            let source = attachment.source
+            // Skip sources already resolved (cached) or currently in-flight.
+            // Also skip sources that previously returned nil (permanent failure) —
+            // without this guard the view would re-fire a Task on every resize,
+            // looping forever.
+            guard imageCache[source] == nil,
+                  !loadingImages.contains(source),
+                  !failedImageSources.contains(source) else { continue }
+            loadingImages.insert(source)
+            Task { [weak self] in
+                guard let self else { return }
+                let cgImage = await provider.image(for: source)
+                // Back on MainActor (Task inherits actor from @MainActor type).
+                self.loadingImages.remove(source)
+                if let cgImage {
+                    self.imageCache[source] = cgImage
+                    // Partial redraw: invalidate only the image's rect.
+                    self.setNeedsDisplay(rect)
+                } else {
+                    // Mark as a permanent failure so future layouts don't re-fire
+                    // a Task for this source.
+                    self.failedImageSources.insert(source)
+                }
+            }
+        }
     }
 
     // MARK: - Pressed-link tracking (Task 7.4)
@@ -210,7 +267,8 @@ public final class TextEngineView: UIView {
     public override func draw(_ rect: CGRect) {
         guard let ctx = UIGraphicsGetCurrentContext() else { return }
         DocumentRenderer.draw(docLayout, in: ctx, canvasHeight: bounds.height, visible: rect,
-                              selection: currentSelectionRects, pressedLinkRects: pressedLinkRects)
+                              selection: currentSelectionRects, pressedLinkRects: pressedLinkRects,
+                              images: imageCache)
         // Task 7.2: draw selection handle knobs when there is a non-empty selection.
         if currentSelectionRects.count >= 1 {
             drawSelectionHandles(in: ctx, selectionRects: currentSelectionRects,

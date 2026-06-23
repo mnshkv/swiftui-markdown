@@ -118,6 +118,7 @@ public struct MarkdownTextView: View {
             document: document,
             isSelectable: isSelectable,
             onLink: onLink,
+            images: images,
             editMenu: editMenu
         )
         // intrinsicContentSize from TextEngineView drives this view's natural height.
@@ -138,6 +139,7 @@ private struct _TextEngineRepresentable: UIViewRepresentable {
     let document: TextDocument
     let isSelectable: Bool
     let onLink: ((LinkPayload) -> Void)?
+    let images: (any ImageProvider)?
     let editMenu: EditMenuConfig
 
     func makeUIView(context: Context) -> TextEngineView {
@@ -145,6 +147,7 @@ private struct _TextEngineRepresentable: UIViewRepresentable {
         view.document = document
         view.isSelectable = isSelectable
         view.editMenuConfig = editMenu
+        view.imageProvider = images
         // Tap gesture for link detection
         let tap = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handleTap(_:)))
         view.addGestureRecognizer(tap)
@@ -155,6 +158,7 @@ private struct _TextEngineRepresentable: UIViewRepresentable {
         uiView.document = document
         uiView.isSelectable = isSelectable
         uiView.editMenuConfig = editMenu
+        uiView.imageProvider = images
         context.coordinator.onLink = onLink
         context.coordinator.view = uiView
     }
@@ -198,6 +202,7 @@ private struct _TextEngineRepresentable: NSViewRepresentable {
     let document: TextDocument
     let isSelectable: Bool
     let onLink: ((LinkPayload) -> Void)?
+    let images: (any ImageProvider)?
     let editMenu: EditMenuConfig
 
     func makeNSView(context: Context) -> TextEngineView {
@@ -205,6 +210,7 @@ private struct _TextEngineRepresentable: NSViewRepresentable {
         view.document = document
         view.isSelectable = isSelectable
         view.editMenuConfig = editMenu
+        view.imageProvider = images
         // Click gesture for link detection
         let click = NSClickGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handleClick(_:)))
         view.addGestureRecognizer(click)
@@ -215,6 +221,7 @@ private struct _TextEngineRepresentable: NSViewRepresentable {
         nsView.document = document
         nsView.isSelectable = isSelectable
         nsView.editMenuConfig = editMenu
+        nsView.imageProvider = images
         context.coordinator.onLink = onLink
         context.coordinator.view = nsView
     }
