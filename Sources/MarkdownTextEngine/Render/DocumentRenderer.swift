@@ -200,13 +200,18 @@ public enum DocumentRenderer {
 
     // MARK: - Image drawing
 
-    /// Draws a `CGImage` into the document-space `rect`.
+    /// Draws a `CGImage` into the document-space `rect`, upright.
     ///
-    /// CoreGraphics draws images in CG space (y-up). Because `draw()` applies a y-flip
-    /// transform to the context before this is called, we simply draw into `rect` directly —
-    /// the flip is already accounted for.
+    /// `draw()` has y-flipped the context (scaleBy(1,-1)) so document y-down maps to
+    /// CG y-up. `CGContextDrawImage` assumes a y-up space, so in that flipped context
+    /// it would draw the image upside-down. Flip the y-axis within the image rect to
+    /// cancel that, so images render upright like the text.
     private static func drawImage(_ image: CGImage, in rect: CGRect, ctx: CGContext) {
+        ctx.saveGState()
+        ctx.translateBy(x: 0, y: rect.minY + rect.maxY)
+        ctx.scaleBy(x: 1, y: -1)
         ctx.draw(image, in: rect)
+        ctx.restoreGState()
     }
 
     /// Draws a placeholder box (light-grey fill + thin border) at `rect` in document space.
