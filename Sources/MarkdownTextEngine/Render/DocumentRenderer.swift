@@ -232,7 +232,10 @@ public enum DocumentRenderer {
             // Baseline in document (y-down) space: origin.y + ascent.
             // The flip transform applied by the caller converts this to CG space correctly.
             let baseline = CGPoint(x: line.origin.x, y: line.origin.y + line.ascent)
-            ctx.textMatrix = .identity
+            // The context CTM is y-flipped (scaleBy(1,-1)) so document y-down
+            // coordinates map correctly. Glyphs must be un-flipped via the text
+            // matrix, or they render upside-down in the flipped context.
+            ctx.textMatrix = CGAffineTransform(scaleX: 1, y: -1)
             ctx.textPosition = baseline
             CTLineDraw(line.ctLine, ctx)
         }
@@ -307,7 +310,10 @@ public enum DocumentRenderer {
             let labelRect = CGRect(origin: label.origin, size: label.size)
             if labelRect.intersects(visible) {
                 let baseline = CGPoint(x: label.origin.x, y: label.origin.y + label.ascent)
-                ctx.textMatrix = .identity
+                // The context CTM is y-flipped (scaleBy(1,-1)) so document y-down
+            // coordinates map correctly. Glyphs must be un-flipped via the text
+            // matrix, or they render upside-down in the flipped context.
+            ctx.textMatrix = CGAffineTransform(scaleX: 1, y: -1)
                 ctx.textPosition = baseline
                 CTLineDraw(label.ctLine, ctx)
             }
@@ -338,7 +344,8 @@ public enum DocumentRenderer {
         _ = CTLineGetTypographicBounds(ctLine, &ascent, &descent, &leading)
 
         let baseline = CGPoint(x: frame.origin.x, y: frame.origin.y + ascent)
-        ctx.textMatrix = .identity
+        // Un-flip glyphs in the y-flipped context (see drawTextLines).
+        ctx.textMatrix = CGAffineTransform(scaleX: 1, y: -1)
         ctx.textPosition = baseline
         CTLineDraw(ctLine, ctx)
     }
