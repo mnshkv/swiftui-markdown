@@ -228,11 +228,19 @@ public enum DocumentRenderer {
         ctx.fill(CGRect(x: rect.maxX - t, y: rect.minY, width: t, height: rect.height))    // right
     }
 
+    /// Corner radius of the custom-rule pill background, in points.
+    private static let pillCornerRadius: CGFloat = 4
+    /// Horizontal padding added on each side of a pill background, in points.
+    private static let pillPaddingH: CGFloat = 3
+
     /// Draws CoreText lines from a `.text` block.
     private static func drawTextLines(_ lines: [LineFrame], in ctx: CGContext, visible: CGRect) {
         for line in lines {
             let lineRect = CGRect(origin: line.origin, size: line.size)
             guard lineRect.intersects(visible) else { continue }
+
+            // Pills are drawn first so glyphs paint on top of them.
+            drawRunBackgrounds(for: line, in: ctx)
 
             // Baseline in document (y-down) space: origin.y + ascent.
             // The flip transform applied by the caller converts this to CG space correctly.
@@ -243,6 +251,36 @@ public enum DocumentRenderer {
             ctx.textMatrix = CGAffineTransform(scaleX: 1, y: -1)
             ctx.textPosition = baseline
             CTLineDraw(line.ctLine, ctx)
+        }
+    }
+
+    /// Fills a rounded "pill" behind any CTRun carrying the
+    /// `markedBackgroundAttributeName` attribute. Operates in the caller's
+    /// already-y-flipped document space (same convention as selection rects).
+    private static func drawRunBackgrounds(for line: LineFrame, in ctx: CGContext) {
+        let runs = CTLineGetGlyphRuns(line.ctLine) as! [CTRun]
+        for run in runs {
+            let attrs = CTRunGetAttributes(run)
+            let keyPtr = Unmanaged.passUnretained(markedBackgroundAttributeName).toOpaque()
+            guard CFDictionaryContainsKey(attrs, keyPtr) else { continue }
+            guard let valuePtr = CFDictionaryGetValue(attrs, keyPtr) else { continue }
+            let color = Unmanaged<CGColor>.fromOpaque(valuePtr).takeUnretainedValue()
+
+            let range = CTRunGetStringRange(run)
+            let startX = CTLineGetOffsetForStringIndex(line.ctLine, range.location, nil)
+            let endX = CTLineGetOffsetForStringIndex(line.ctLine, range.location + range.length, nil)
+
+            let rect = CGRect(
+                x: line.origin.x + min(startX, endX) - pillPaddingH,
+                y: line.origin.y,
+                width: abs(endX - startX) + 2 * pillPaddingH,
+                height: line.size.height
+            )
+            let path = CGPath(roundedRect: rect, cornerWidth: pillCornerRadius,
+                              cornerHeight: pillCornerRadius, transform: nil)
+            ctx.addPath(path)
+            ctx.setFillColor(color)
+            ctx.fillPath()
         }
     }
 

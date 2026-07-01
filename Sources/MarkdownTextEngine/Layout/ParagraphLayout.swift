@@ -1,6 +1,13 @@
 import CoreText
 import CoreGraphics
 
+/// Custom CFAttributedString key carrying a per-run pill background colour.
+/// Read back at draw time by `DocumentRenderer` to fill a rounded background.
+/// `nonisolated(unsafe)`: `CFString` is not `Sendable`, but this value is an
+/// immutable string literal never mutated after initialization, so sharing it
+/// across threads is safe.
+nonisolated(unsafe) let markedBackgroundAttributeName = "MarkedBackgroundColor" as CFString
+
 // MARK: - Font helper (Wave 0)
 
 func ctFont(for style: TextStyle) -> CTFont {
@@ -41,10 +48,13 @@ private func appendRuns(_ runs: [InlineRun], into attrStr: CFMutableAttributedSt
         case .text(let string, let style):
             lastStyle = style
             let font = ctFont(for: style)
-            let attrs: [CFString: Any] = [
+            var attrs: [CFString: Any] = [
                 kCTFontAttributeName: font,
                 kCTForegroundColorAttributeName: style.color
             ]
+            if let bg = style.background {
+                attrs[markedBackgroundAttributeName] = bg
+            }
             let len = CFAttributedStringGetLength(attrStr)
             CFAttributedStringReplaceString(attrStr, CFRangeMake(len, 0), string as CFString)
             let newLen = CFAttributedStringGetLength(attrStr)
