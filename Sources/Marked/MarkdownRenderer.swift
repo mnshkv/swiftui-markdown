@@ -13,7 +13,8 @@ public extension MarkdownRenderer {
     static func render(
         _ document: MarkdownDocument,
         style: MarkdownStyle = .default,
-        colorScheme: MarkdownColorScheme = .light
+        colorScheme: MarkdownColorScheme = .light,
+        rules: [InlineRule] = []
     ) -> TextDocument {
         // Build footnote number map safely — duplicate ids overwrite (last-wins), no crash.
         var footnoteNumbers: [String: Int] = [:]
@@ -21,7 +22,7 @@ public extension MarkdownRenderer {
             footnoteNumbers[fn.id] = i + 1
         }
 
-        let ctx = StyleContext(style, colorScheme)
+        let ctx = StyleContext(style, colorScheme, rules: rules)
         var blocks = BlockMapper.map(document.blocks, ctx: ctx, footnotes: footnoteNumbers)
 
         // Append footnotes section if there are any footnotes.
@@ -78,9 +79,10 @@ public extension MarkdownRenderer {
     static func render(
         _ markdown: String,
         style: MarkdownStyle = .default,
-        colorScheme: MarkdownColorScheme = .light
+        colorScheme: MarkdownColorScheme = .light,
+        rules: [InlineRule] = []
     ) -> TextDocument {
-        render(MarkdownParser.parse(markdown), style: style, colorScheme: colorScheme)
+        render(MarkdownParser.parse(markdown), style: style, colorScheme: colorScheme, rules: rules)
     }
 }
 
