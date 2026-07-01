@@ -89,7 +89,7 @@ public struct MarkdownView: View {
             } else {
                 openURL(u)
             }
-        case .footnote, .ignore:
+        case .footnote, .custom, .ignore:
             break
         }
     }

@@ -90,6 +90,7 @@ public extension MarkdownRenderer {
 public enum LinkAction: Equatable {
     case url(URL)
     case footnote(String)
+    case custom(ruleID: String, value: String)
     case ignore
 }
 
@@ -101,6 +102,9 @@ public extension MarkdownRenderer {
     /// - All other non-empty tokens are parsed by `URL(string:)`:
     ///   valid URL → `.url`; nil or empty → `.ignore`.
     static func resolveLink(_ token: String) -> LinkAction {
+        if let (ruleID, value) = InlineRuleToken.decode(token) {
+            return .custom(ruleID: ruleID, value: value)
+        }
         let footnotePrefix = "footnote:"
         if token.hasPrefix(footnotePrefix) {
             return .footnote(String(token.dropFirst(footnotePrefix.count)))
