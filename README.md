@@ -16,7 +16,7 @@ third-party dependencies**. It ships as three layers you can use independently:
   `import Marked` is all you need.
 
 Built test-first (TDD): every feature is driven by a failing test, and the suite
-currently has **523 tests** across all three modules (0 lint errors).
+currently has **558 tests** across all three modules (0 lint errors).
 
 ## Installation
 
@@ -30,7 +30,7 @@ Swift Package Manager — all three products are available:
 ```
 
 Requires Swift 6.2+. `MarkdownAST` is platform-agnostic (builds on Linux);
-`MarkdownTextEngine` and `Marked` target iOS 26+ and macOS.
+`MarkdownTextEngine` and `Marked` target iOS 17+ and macOS 14+.
 
 ## Usage
 
@@ -110,6 +110,77 @@ initializer if you prefer not to derive from `.default`.
 custom font family); the quote bar color, code-block background tint, and
 list-marker color use the engine's built-in defaults.
 
+### Custom inline rules (hashtags, mentions, emoji)
+
+Beyond standard Markdown, you can highlight and handle your own inline tokens —
+`#hashtags`, `@mentions`, `:emoji:` shortcodes, anything with a trigger
+character. Rules are a declarative, per-`MarkdownView` list; the CommonMark
+parser is untouched, so this never changes how normal Markdown is parsed.
+
+```swift
+import Marked
+
+let rules: [InlineRule] = [
+    // #hashtag → blue, tappable
+    InlineRule(
+        id: "hashtag",
+        trigger: "#",
+        output: .styledText(InlineDecoration(
+            color: CGColor(srgbRed: 0.15, green: 0.45, blue: 0.9, alpha: 1)
+        ))
+    ),
+    // @mention → bold with a rounded "pill" background, tappable
+    InlineRule(
+        id: "mention",
+        trigger: "@",
+        output: .styledText(InlineDecoration(
+            isBold: true,
+            background: CGColor(srgbRed: 0.9, green: 0.94, blue: 1, alpha: 1)
+        ))
+    ),
+    // :smile: → inline image, delimiters dropped, not tappable
+    InlineRule(
+        id: "emoji",
+        trigger: ":",
+        closing: ":",
+        output: .image(keyPrefix: "emoji:"),   // ImageProvider key = "emoji:" + body
+        isTappable: false
+    ),
+]
+
+MarkdownView(
+    "Hey @alice, ship #swift :rocket:",
+    images: myEmojiProvider,        // resolves "emoji:rocket" for the :rocket: rule
+    rules: rules,
+    onCustomTap: { tap in
+        // tap.ruleID == "hashtag" / "mention"; tap.value == "swift" / "alice"
+        print(tap.ruleID, tap.value)
+    }
+)
+```
+
+**`InlineRule` fields:** `id` (returned on tap), `trigger` (the opening
+character), `body` (allowed body characters — `.word` = letters/digits/`_`, or
+`.custom(Set<Character>)`), `closing` (optional closing delimiter, e.g. `:` for
+`:emoji:`), `minBodyLength` (default 1), `requiresLeadingBoundary` (default
+`true` — so `email@host` does **not** match an `@` rule), `output`, and
+`isTappable` (default `true`).
+
+**`output`** is either `.styledText(InlineDecoration)` — with `color`, `isBold`,
+`isItalic`, a rounded `background` pill, and `includeTrigger` (keep the `#`/`@`
+in the displayed text, default `true`) — or `.image(keyPrefix:)`, which renders
+an inline image whose `ImageProvider` key is `keyPrefix + body`.
+
+Rules match inside emphasis (inheriting its italic/bold) but are **suppressed
+inside real Markdown link labels and code spans**. When multiple rules share a
+trigger, the first matching rule in the array wins. Tappable spans reuse the
+same hit-testing as links; the pill background is drawn beneath text selection
+and press highlights.
+
+**Documented v1 limitations:** the leading-boundary check only sees the current
+text node, so a token immediately following inline markup (e.g. `*a*@user`) can
+still match; there is no `\#` escape to opt a token out.
+
 ### Display it (text engine)
 
 The engine is Markdown-agnostic: it renders a generic `TextDocument`.
@@ -178,19 +249,28 @@ deferred (LTR only); horizontal code scrolling deferred (long lines wrap);
 layout virtualization deferred (full layout + windowed draw); rich/Markdown copy
 deferred (plain text only).
 
+### Custom inline rules (`Marked`)
+
+Per-`MarkdownView` declarative rules for custom inline tokens (hashtags,
+mentions, emoji shortcodes) that render as styled text, a rounded "pill", or an
+inline image, and dispatch a `CustomInlineTap` when tapped — layered on top of
+the mapping stage without touching the CommonMark parser. See
+[Custom inline rules](#custom-inline-rules-hashtags-mentions-emoji) above.
+
 ### Roadmap
 
-The library is three specs, built in dependency order:
+The library is three specs, built in dependency order, plus a follow-on feature:
 
 1. **Parser → AST** (`MarkdownAST`) — ✅ done.
 2. **Text engine** (`MarkdownTextEngine`) — ✅ done.
 3. **Markdown renderer** (`Marked`) — ✅ done.
+4. **Custom inline rules** (`Marked`) — ✅ done.
 
 ## Development
 
 ```sh
 swift build      # build
-swift test       # run the test suite (523 tests)
+swift test       # run the test suite (558 tests)
 swiftlint        # lint (config in .swiftlint.yml)
 ```
 
